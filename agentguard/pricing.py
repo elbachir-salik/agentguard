@@ -10,6 +10,8 @@ PRICING: dict[str, dict[str, float]] = {
     "claude-opus-4-8": {"input": 15.00, "output": 75.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5": {"input": 0.80, "output": 4.00},
+    # DeepSeek via NVIDIA - per 1M tokens
+    "deepseek-ai/deepseek-v4-flash": {"input": 0.20, "output": 0.60},
 }
 
 _FALLBACK = {"input": 1.00, "output": 3.00}
