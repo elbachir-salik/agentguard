@@ -3,19 +3,36 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from agentguard.breaker import CircuitBreaker
+from agentguard.exceptions import CircuitBreakerTripped
 from agentguard.extractors import GenericExtractor, OpenAIExtractor
 from agentguard.models import SessionRecord
 from agentguard.recorder import Recorder
+from agentguard.rules.base import SessionState
 from agentguard.storage import Storage
 
 
 class Session:
-    def __init__(self, record: SessionRecord, storage: Storage):
+    def __init__(
+        self,
+        record: SessionRecord,
+        storage: Storage,
+        breaker: CircuitBreaker | None = None,
+    ):
         self._record = record
         self._storage = storage
         self._recorder = Recorder(record)
+        self._breaker = breaker or CircuitBreaker()
+        self._state = SessionState()
+        self._state.start_time = time.time()
 
     def call(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+        # Check breaker BEFORE the call
+        event = self._breaker.evaluate(self._state)
+        if event:
+            self._trip(event)
+            raise CircuitBreakerTripped(event)
+
         input_data = kwargs.get("messages", list(args[:1]))
         if not isinstance(input_data, list):
             input_data = [{"raw": str(input_data)}]
@@ -30,9 +47,20 @@ class Session:
 
         latency_ms = (time.perf_counter() - start) * 1000
         extractor = self._detect_extractor(response)
-        self._recorder.record_turn(input_data, response, extractor, latency_ms)
+        turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
+
+        self._state.add_turn(turn)
+
+        # Check breaker AFTER the call
+        event = self._breaker.evaluate(self._state)
+        if event:
+            self._trip(event)
 
         return response
+
+    def _trip(self, event) -> None:
+        self._record.breaker_event = event
+        self._record.finalize("tripped")
 
     def _detect_extractor(self, response: Any):
         module = type(response).__module__ or ""

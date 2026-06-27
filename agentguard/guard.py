@@ -3,7 +3,11 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Generator
 
+from agentguard.breaker import CircuitBreaker
+from agentguard.exceptions import CircuitBreakerTripped
 from agentguard.models import SessionRecord
+from agentguard.rules import BudgetRule, LoopRule, ScopeRule, TimeoutRule, TurnsRule
+from agentguard.rules.base import BaseRule
 from agentguard.session import Session
 from agentguard.storage import Storage
 
@@ -13,18 +17,66 @@ class Guard:
         self,
         agent_name: str = "default",
         db_path: str | None = None,
+        max_cost: float | None = None,
+        max_tokens: int | None = None,
+        max_turns: int | None = None,
+        max_tool_retries: int | None = None,
+        similarity_threshold: float = 0.85,
+        timeout: float | None = None,
+        allowed_tools: list[str] | None = None,
+        blocked_tools: list[str] | None = None,
+        rules: list[BaseRule] | None = None,
     ):
         self.agent_name = agent_name
         self._storage = Storage(db_path=db_path)
+        self._rules = rules or self._build_default_rules(
+            max_cost=max_cost,
+            max_tokens=max_tokens,
+            max_turns=max_turns,
+            max_tool_retries=max_tool_retries,
+            similarity_threshold=similarity_threshold,
+            timeout=timeout,
+            allowed_tools=allowed_tools,
+            blocked_tools=blocked_tools,
+        )
+
+    def _build_default_rules(self, **kwargs) -> list[BaseRule]:
+        rules: list[BaseRule] = []
+
+        if kwargs["max_cost"] is not None or kwargs["max_tokens"] is not None:
+            rules.append(BudgetRule(
+                max_cost_usd=kwargs["max_cost"],
+                max_tokens=kwargs["max_tokens"],
+            ))
+        if kwargs["max_turns"] is not None:
+            rules.append(TurnsRule(max_turns=kwargs["max_turns"]))
+        if kwargs["max_tool_retries"] is not None:
+            rules.append(LoopRule(
+                max_retries=kwargs["max_tool_retries"],
+                similarity_threshold=kwargs["similarity_threshold"],
+            ))
+        if kwargs["timeout"] is not None:
+            rules.append(TimeoutRule(timeout_seconds=kwargs["timeout"]))
+        if kwargs["allowed_tools"] is not None or kwargs["blocked_tools"]:
+            rules.append(ScopeRule(
+                allowed_tools=kwargs["allowed_tools"],
+                blocked_tools=kwargs["blocked_tools"],
+            ))
+
+        return rules
 
     @contextmanager
     def session(self) -> Generator[Session, None, None]:
         record = SessionRecord(agent_name=self.agent_name)
-        session = Session(record=record, storage=self._storage)
+        breaker = CircuitBreaker(rules=self._rules)
+        session = Session(record=record, storage=self._storage, breaker=breaker)
 
         try:
             yield session
-            record.finalize("completed")
+            if record.status == "running":
+                record.finalize("completed")
+        except CircuitBreakerTripped:
+            raise
         except Exception:
             record.finalize("error")
             raise
