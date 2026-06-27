@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stats - AgentGuard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <nav>
+        <span class="brand">AgentGuard</span>
+        <a href="/">Sessions</a>
+        <a href="/stats">Stats</a>
+    </nav>
+
+    <div class="container">
+        <h1>Stats</h1>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="value">{{ stats.total_sessions }}</div>
+                <div class="label">Total Sessions</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" style="color: var(--green)">{{ stats.completed }}</div>
+                <div class="label">Completed</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" style="color: var(--red)">{{ stats.trips }}</div>
+                <div class="label">Tripped</div>
+            </div>
+            <div class="stat-card">
+                <div class="value" style="color: var(--yellow)">{{ stats.errors }}</div>
+                <div class="label">Errors</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">{{ "{:,}".format(stats.total_tokens) }}</div>
+                <div class="label">Total Tokens</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">${{ "%.4f"|format(stats.total_cost_usd) }}</div>
+                <div class="label">Total Cost</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h3>Session Status</h3>
+            <canvas id="statusChart" height="200"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <h3>Cost by Agent</h3>
+            <canvas id="agentChart" height="200"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <h3>Daily Cost</h3>
+            <canvas id="dailyChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const chartColors = {
+            green: '#3fb950',
+            red: '#f85149',
+            yellow: '#d29922',
+            blue: '#58a6ff',
+            cyan: '#39d2c0',
+            purple: '#bc8cff',
+        };
+
+        // Status donut
+        new Chart(document.getElementById('statusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Completed', 'Tripped', 'Errors'],
+                datasets: [{
+                    data: [
+                        {{ status_counts.completed }},
+                        {{ status_counts.tripped }},
+                        {{ status_counts.error }}
+                    ],
+                    backgroundColor: [chartColors.green, chartColors.red, chartColors.yellow],
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { labels: { color: '#e6edf3' } }
+                }
+            }
+        });
+
+        // Cost by agent bar
+        new Chart(document.getElementById('agentChart'), {
+            type: 'bar',
+            data: {
+                labels: {{ cost_by_agent.keys()|list|tojson }},
+                datasets: [{
+                    label: 'Cost ($)',
+                    data: {{ cost_by_agent.values()|list|tojson }},
+                    backgroundColor: chartColors.cyan,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    y: { ticks: { color: '#8b949e' }, grid: { color: '#30363d' } }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+
+        // Daily cost line
+        new Chart(document.getElementById('dailyChart'), {
+            type: 'line',
+            data: {
+                labels: {{ daily_labels|tojson }},
+                datasets: [{
+                    label: 'Cost ($)',
+                    data: {{ daily_values|tojson }},
+                    borderColor: chartColors.blue,
+                    backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    y: { ticks: { color: '#8b949e' }, grid: { color: '#30363d' } }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

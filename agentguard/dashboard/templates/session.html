@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session {{ session.session_id }} - AgentGuard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav>
+        <span class="brand">AgentGuard</span>
+        <a href="/">Sessions</a>
+        <a href="/stats">Stats</a>
+    </nav>
+
+    <div class="container">
+        <h1>Session: {{ session.session_id }}</h1>
+        <h2>{{ session.agent_name }}</h2>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="value">{{ session.turns|length }}</div>
+                <div class="label">Turns</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">
+                    <span class="badge badge-{{ session.status }}">{{ session.status }}</span>
+                </div>
+                <div class="label">Status</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">{{ session.total_tokens }}</div>
+                <div class="label">Tokens</div>
+            </div>
+            <div class="stat-card">
+                <div class="value">${{ "%.4f"|format(session.total_cost_usd) }}</div>
+                <div class="label">Cost</div>
+            </div>
+        </div>
+
+        {% if session.breaker_event %}
+        <div class="breaker-box">
+            <h3>CIRCUIT BREAKER TRIPPED</h3>
+            <p><strong>Rule:</strong> {{ session.breaker_event.rule }}</p>
+            <p><strong>Cause:</strong> {{ session.breaker_event.trigger }}</p>
+            <p><strong>Turn:</strong> {{ session.breaker_event.turn }}</p>
+        </div>
+        {% endif %}
+
+        <h2>Turns</h2>
+
+        {% for turn in session.turns %}
+        <div class="turn-card">
+            <div class="turn-header">
+                <span>
+                    <strong>Turn {{ turn.turn_number }}</strong>
+                    <span class="badge badge-{% if turn.status == 'success' %}completed{% else %}error{% endif %}">
+                        {{ turn.status }}
+                    </span>
+                </span>
+                <span class="turn-meta">
+                    {{ turn.tokens_in + turn.tokens_out }} tok |
+                    ${{ "%.4f"|format(turn.cost_usd) }} |
+                    {{ "%.0f"|format(turn.latency_ms) }}ms
+                    {% if turn.model %} | {{ turn.model }}{% endif %}
+                </span>
+            </div>
+
+            {% if turn.input_messages %}
+            <div style="margin-bottom: 6px; color: var(--text-dim); font-size: 12px;">INPUT</div>
+            <div class="turn-content">{% for msg in turn.input_messages %}{% if msg.get("role") %}{{ msg.role }}: {% endif %}{{ msg.get("content", msg|string) }}{% if not loop.last %}
+{% endif %}{% endfor %}</div>
+            {% endif %}
+
+            {% if turn.tool_calls %}
+            {% for tc in turn.tool_calls %}
+            <div class="tool-call">
+                <strong>{{ tc.get("name", "?") }}</strong>({{ tc.get("arguments", "") }})
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            {% if turn.output.get("content") %}
+            <div style="margin: 6px 0 4px; color: var(--text-dim); font-size: 12px;">OUTPUT</div>
+            <div class="turn-content">{{ turn.output.content }}</div>
+            {% endif %}
+
+            {% if turn.output.get("error") %}
+            <div style="margin: 6px 0 4px; color: var(--red); font-size: 12px;">ERROR</div>
+            <div class="turn-content" style="border-color: var(--red);">{{ turn.output.error }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
