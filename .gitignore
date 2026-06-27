@@ -33,3 +33,6 @@ htmlcov/
 
 # AgentGuard data
 *.db
+
+# Demo repo (separate git repo)
+agentguard-demo/
