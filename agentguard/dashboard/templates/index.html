@@ -35,6 +35,20 @@
             </div>
         </div>
 
+        <form class="filter-bar" method="get" action="/">
+            <input type="text" name="agent" placeholder="Filter by agent" value="{{ filter_agent }}">
+            <select name="status">
+                <option value="">All statuses</option>
+                <option value="completed" {% if filter_status == 'completed' %}selected{% endif %}>completed</option>
+                <option value="tripped" {% if filter_status == 'tripped' %}selected{% endif %}>tripped</option>
+                <option value="error" {% if filter_status == 'error' %}selected{% endif %}>error</option>
+            </select>
+            <button type="submit">Filter</button>
+            {% if filter_agent or filter_status %}
+            <a href="/">Clear</a>
+            {% endif %}
+        </form>
+
         <table>
             <thead>
                 <tr>
