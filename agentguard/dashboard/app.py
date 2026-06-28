@@ -44,26 +44,13 @@ async def session_detail(request: Request, session_id: str):
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_page(request: Request):
     stats = storage.get_stats()
-    sessions = storage.list_sessions(limit=500)
-
-    cost_by_agent: dict[str, float] = {}
-    status_counts = {"completed": 0, "tripped": 0, "error": 0}
-    daily_costs: dict[str, float] = {}
-
-    for s in sessions:
-        agent = s["agent_name"]
-        cost_by_agent[agent] = cost_by_agent.get(agent, 0) + (s["total_cost_usd"] or 0)
-
-        st = s["status"]
-        if st in status_counts:
-            status_counts[st] += 1
-
-        day = s["started_at"][:10]
-        daily_costs[day] = daily_costs.get(day, 0) + (s["total_cost_usd"] or 0)
-
-    sorted_days = sorted(daily_costs.keys())
-    daily_labels = sorted_days
-    daily_values = [daily_costs[d] for d in sorted_days]
+    cost_by_agent = storage.get_cost_by_agent()
+    daily_labels, daily_values = storage.get_daily_costs()
+    status_counts = {
+        "completed": stats["completed"],
+        "tripped": stats["trips"],
+        "error": stats["errors"],
+    }
 
     return templates.TemplateResponse("stats.html", {
         "request": request,
