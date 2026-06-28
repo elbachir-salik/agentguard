@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS turns (
     latency_ms REAL,
     tool_calls_json TEXT,
     status TEXT NOT NULL,
-    model TEXT
+    model TEXT,
+    UNIQUE(session_id, turn_number)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_name);
@@ -76,9 +77,11 @@ class Storage:
                 ),
             )
 
+            conn.execute("DELETE FROM turns WHERE session_id = ?", (record.session_id,))
+
             for turn in record.turns:
                 conn.execute(
-                    """INSERT OR REPLACE INTO turns
+                    """INSERT INTO turns
                        (session_id, turn_number, timestamp, input_json, output_json,
                         tokens_in, tokens_out, cost_usd, latency_ms,
                         tool_calls_json, status, model)
@@ -163,24 +166,22 @@ class Storage:
             return [dict(r) for r in rows]
 
     def get_stats(self, agent_name: str | None = None) -> dict:
-        where = ""
+        query = """SELECT
+            COUNT(*) as total_sessions,
+            SUM(total_tokens) as total_tokens,
+            SUM(total_cost_usd) as total_cost,
+            SUM(CASE WHEN status = 'tripped' THEN 1 ELSE 0 END) as trips,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
+            FROM sessions"""
         params: list = []
+
         if agent_name:
-            where = "WHERE agent_name = ?"
-            params = [agent_name]
+            query += " WHERE agent_name = ?"
+            params.append(agent_name)
 
         with self._connect() as conn:
-            row = conn.execute(
-                f"""SELECT
-                    COUNT(*) as total_sessions,
-                    SUM(total_tokens) as total_tokens,
-                    SUM(total_cost_usd) as total_cost,
-                    SUM(CASE WHEN status = 'tripped' THEN 1 ELSE 0 END) as trips,
-                    SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
-                FROM sessions {where}""",
-                params,
-            ).fetchone()
+            row = conn.execute(query, params).fetchone()
 
             return {
                 "total_sessions": row["total_sessions"],
