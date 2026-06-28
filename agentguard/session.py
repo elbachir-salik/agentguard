@@ -25,6 +25,7 @@ class Session:
         self._breaker = breaker or CircuitBreaker()
         self._state = SessionState()
         self._state.start_time = time.time()
+        self._tripped = False
 
     def call(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         # Check breaker BEFORE the call
@@ -55,12 +56,14 @@ class Session:
         event = self._breaker.evaluate(self._state)
         if event:
             self._trip(event)
+            raise CircuitBreakerTripped(event)
 
         return response
 
     def _trip(self, event) -> None:
         self._record.breaker_event = event
         self._record.finalize("tripped")
+        self._tripped = True
 
     def _detect_extractor(self, response: Any):
         module = type(response).__module__ or ""
