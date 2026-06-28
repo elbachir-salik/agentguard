@@ -30,7 +30,6 @@ class Session:
         self._breaker = breaker or CircuitBreaker()
         self._state = SessionState()
         self._state.start_time = time.time()
-        self._tripped = False
         self._on_trip = on_trip
         self._on_turn = on_turn
 
@@ -49,7 +48,8 @@ class Session:
             response = fn(*args, **kwargs)
         except Exception as e:
             latency_ms = (time.perf_counter() - start) * 1000
-            self._recorder.record_error(input_data, e, latency_ms)
+            turn = self._recorder.record_error(input_data, e, latency_ms)
+            self._state.add_turn(turn)
             raise
 
         latency_ms = (time.perf_counter() - start) * 1000
@@ -71,7 +71,6 @@ class Session:
     def _trip(self, event: BreakerEvent) -> None:
         self._record.breaker_event = event
         self._record.finalize("tripped")
-        self._tripped = True
         if self._on_trip:
             self._on_trip(event, self._record)
 
@@ -84,15 +83,14 @@ class Session:
         return GenericExtractor()
 
     def summary(self) -> dict:
-        self._record.finalize(
-            self._record.status if self._record.status != "running" else "completed"
-        )
+        total_tokens = sum(t.tokens_in + t.tokens_out for t in self._record.turns)
+        total_cost = sum(t.cost_usd for t in self._record.turns)
         return {
             "session_id": self._record.session_id,
             "agent_name": self._record.agent_name,
             "turns": len(self._record.turns),
-            "total_tokens": self._record.total_tokens,
-            "total_cost_usd": round(self._record.total_cost_usd, 6),
+            "total_tokens": total_tokens,
+            "total_cost_usd": round(total_cost, 6),
             "status": self._record.status,
         }
 
