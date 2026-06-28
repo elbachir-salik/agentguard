@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agentguard.models import Turn
 
 
 @dataclass
@@ -29,12 +33,12 @@ class BaseRule(ABC):
 
 class SessionState:
     def __init__(self) -> None:
-        self.turns: list = []
+        self.turns: list[Turn] = []
         self.total_cost: float = 0.0
         self.total_tokens: int = 0
         self.start_time: float = 0.0
 
-    def add_turn(self, turn) -> None:
+    def add_turn(self, turn: Turn) -> None:
         self.turns.append(turn)
         self.total_cost += turn.cost_usd
         self.total_tokens += turn.tokens_in + turn.tokens_out
