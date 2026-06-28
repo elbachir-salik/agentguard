@@ -55,6 +55,7 @@ class Storage:
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            conn.execute("PRAGMA journal_mode=WAL")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -164,6 +165,40 @@ class Storage:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
             return [dict(r) for r in rows]
+
+    def find_sessions_by_prefix(self, session_id_prefix: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT session_id, agent_name, started_at, ended_at, status,
+                          total_tokens, total_cost_usd
+                   FROM sessions
+                   WHERE session_id LIKE ?
+                   ORDER BY started_at DESC""",
+                (f"{session_id_prefix}%",),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_cost_by_agent(self) -> dict[str, float]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT agent_name, SUM(total_cost_usd) as total_cost
+                   FROM sessions
+                   GROUP BY agent_name
+                   ORDER BY total_cost DESC"""
+            ).fetchall()
+            return {row["agent_name"]: row["total_cost"] or 0.0 for row in rows}
+
+    def get_daily_costs(self) -> tuple[list[str], list[float]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT substr(started_at, 1, 10) as day, SUM(total_cost_usd) as total_cost
+                   FROM sessions
+                   GROUP BY day
+                   ORDER BY day"""
+            ).fetchall()
+            labels = [row["day"] for row in rows]
+            values = [row["total_cost"] or 0.0 for row in rows]
+            return labels, values
 
     def get_stats(self, agent_name: str | None = None) -> dict:
         query = """SELECT
