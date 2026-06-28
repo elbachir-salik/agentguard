@@ -11,7 +11,7 @@ class ScopeRule(BaseRule):
         allowed_tools: list[str] | None = None,
         blocked_tools: list[str] | None = None,
     ):
-        self.allowed_tools = set(allowed_tools) if allowed_tools else None
+        self.allowed_tools = set(allowed_tools) if allowed_tools is not None else None
         self.blocked_tools = set(blocked_tools) if blocked_tools else set()
 
     def check(self, state: SessionState) -> RuleResult:
