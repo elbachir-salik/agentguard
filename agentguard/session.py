@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
-from agentguard.extractors import GenericExtractor, OpenAIExtractor
+from agentguard.extractors import AnthropicExtractor, GenericExtractor, OpenAIExtractor
 from agentguard.models import SessionRecord
 from agentguard.recorder import Recorder
 from agentguard.rules.base import SessionState
@@ -28,7 +28,6 @@ class Session:
         self._tripped = False
 
     def call(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
-        # Check breaker BEFORE the call
         event = self._breaker.evaluate(self._state)
         if event:
             self._trip(event)
@@ -52,7 +51,6 @@ class Session:
 
         self._state.add_turn(turn)
 
-        # Check breaker AFTER the call
         event = self._breaker.evaluate(self._state)
         if event:
             self._trip(event)
@@ -69,6 +67,8 @@ class Session:
         module = type(response).__module__ or ""
         if "openai" in module:
             return OpenAIExtractor()
+        if "anthropic" in module:
+            return AnthropicExtractor()
         return GenericExtractor()
 
     def summary(self) -> dict:
