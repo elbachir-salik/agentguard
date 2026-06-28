@@ -14,6 +14,16 @@ from agentguard.storage import Storage
 OnTripCallback = Callable[[BreakerEvent, SessionRecord], None]
 OnTurnCallback = Callable[[Turn, SessionRecord], None]
 
+_CONVENIENCE_KWARGS = (
+    "max_cost",
+    "max_tokens",
+    "max_turns",
+    "max_tool_retries",
+    "timeout",
+    "allowed_tools",
+    "blocked_tools",
+)
+
 
 class Guard:
     def __init__(
@@ -36,6 +46,22 @@ class Guard:
         self._storage = Storage(db_path=db_path)
         self._on_trip = on_trip
         self._on_turn = on_turn
+
+        convenience = {
+            "max_cost": max_cost,
+            "max_tokens": max_tokens,
+            "max_turns": max_turns,
+            "max_tool_retries": max_tool_retries,
+            "timeout": timeout,
+            "allowed_tools": allowed_tools,
+            "blocked_tools": blocked_tools,
+        }
+        if rules is not None and any(convenience[k] is not None for k in _CONVENIENCE_KWARGS):
+            raise ValueError(
+                "Cannot pass both `rules` and convenience kwargs "
+                f"({_CONVENIENCE_KWARGS}). Use one or the other."
+            )
+
         self._rules = rules or self._build_default_rules(
             max_cost=max_cost,
             max_tokens=max_tokens,
