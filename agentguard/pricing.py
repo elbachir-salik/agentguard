@@ -17,6 +17,21 @@ PRICING: dict[str, dict[str, float]] = {
 _FALLBACK = {"input": 1.00, "output": 3.00}
 
 
+def _lookup_prices(model: str) -> dict[str, float]:
+    if model in PRICING:
+        return PRICING[model]
+
+    # Longest prefix match (e.g. gpt-4o-2024-08-06 -> gpt-4o)
+    best_match = ""
+    for key in PRICING:
+        if model.startswith(key) and len(key) > len(best_match):
+            best_match = key
+    if best_match:
+        return PRICING[best_match]
+
+    return _FALLBACK
+
+
 def estimate_cost(model: str, tokens_in: int, tokens_out: int) -> float:
-    prices = PRICING.get(model, _FALLBACK)
+    prices = _lookup_prices(model)
     return (tokens_in * prices["input"] + tokens_out * prices["output"]) / 1_000_000
