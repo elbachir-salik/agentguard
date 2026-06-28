@@ -179,7 +179,7 @@ guard = Guard(agent_name="safe-bot", rules=[NoPIIRule()])
 AgentGuard has **zero LLM dependencies**. It wraps whatever client you already use:
 
 - **OpenAI** — full extraction (tokens, cost, tool calls)
-- **Anthropic** — coming soon (extractor planned)
+- **Anthropic** — full extraction (tokens, cost, tool calls)
 - **Any provider** — generic extractor works with any dict-like or object response
 - **NVIDIA NIM / DeepSeek** — works via OpenAI-compatible base_url
 
