@@ -31,6 +31,12 @@ Existing tools are either enterprise SaaS (Datadog, AgentOps — cloud, API keys
 pip install agentguard
 ```
 
+For the local dashboard:
+
+```bash
+pip install agentguard[dashboard]
+```
+
 Or from source:
 
 ```bash
@@ -60,6 +66,8 @@ Real-time protection with composable rules:
 | **Scope** | Unauthorized tool usage | `allowed_tools=[...]`, `blocked_tools=[...]` |
 
 When a rule trips, AgentGuard raises `CircuitBreakerTripped` and saves the session with full context.
+
+
 
 ### 3. CLI
 
