@@ -70,8 +70,7 @@ def replay(session_id):
     """Replay a session turn by turn."""
     storage = Storage()
 
-    all_sessions = storage.list_sessions(limit=500)
-    matches = [s for s in all_sessions if s["session_id"].startswith(session_id)]
+    matches = storage.find_sessions_by_prefix(session_id)
 
     if not matches:
         console.print(f"[red]Session '{session_id}' not found.[/red]")
