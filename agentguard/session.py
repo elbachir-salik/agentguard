@@ -6,10 +6,13 @@ from typing import Any, Callable
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
 from agentguard.extractors import AnthropicExtractor, GenericExtractor, OpenAIExtractor
-from agentguard.models import SessionRecord
+from agentguard.models import BreakerEvent, SessionRecord, Turn
 from agentguard.recorder import Recorder
 from agentguard.rules.base import SessionState
 from agentguard.storage import Storage
+
+OnTripCallback = Callable[[BreakerEvent, SessionRecord], None]
+OnTurnCallback = Callable[[Turn, SessionRecord], None]
 
 
 class Session:
@@ -18,6 +21,8 @@ class Session:
         record: SessionRecord,
         storage: Storage,
         breaker: CircuitBreaker | None = None,
+        on_trip: OnTripCallback | None = None,
+        on_turn: OnTurnCallback | None = None,
     ):
         self._record = record
         self._storage = storage
@@ -26,6 +31,8 @@ class Session:
         self._state = SessionState()
         self._state.start_time = time.time()
         self._tripped = False
+        self._on_trip = on_trip
+        self._on_turn = on_turn
 
     def call(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         event = self._breaker.evaluate(self._state)
@@ -49,6 +56,9 @@ class Session:
         extractor = self._detect_extractor(response)
         turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
 
+        if self._on_turn:
+            self._on_turn(turn, self._record)
+
         self._state.add_turn(turn)
 
         event = self._breaker.evaluate(self._state)
@@ -58,10 +68,12 @@ class Session:
 
         return response
 
-    def _trip(self, event) -> None:
+    def _trip(self, event: BreakerEvent) -> None:
         self._record.breaker_event = event
         self._record.finalize("tripped")
         self._tripped = True
+        if self._on_trip:
+            self._on_trip(event, self._record)
 
     def _detect_extractor(self, response: Any):
         module = type(response).__module__ or ""

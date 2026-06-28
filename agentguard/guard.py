@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Generator
+from typing import Callable, Generator
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
-from agentguard.models import SessionRecord
+from agentguard.models import BreakerEvent, SessionRecord, Turn
 from agentguard.rules import BudgetRule, LoopRule, ScopeRule, TimeoutRule, TurnsRule
 from agentguard.rules.base import BaseRule
 from agentguard.session import Session
 from agentguard.storage import Storage
+
+OnTripCallback = Callable[[BreakerEvent, SessionRecord], None]
+OnTurnCallback = Callable[[Turn, SessionRecord], None]
 
 
 class Guard:
@@ -26,9 +29,13 @@ class Guard:
         allowed_tools: list[str] | None = None,
         blocked_tools: list[str] | None = None,
         rules: list[BaseRule] | None = None,
+        on_trip: OnTripCallback | None = None,
+        on_turn: OnTurnCallback | None = None,
     ):
         self.agent_name = agent_name
         self._storage = Storage(db_path=db_path)
+        self._on_trip = on_trip
+        self._on_turn = on_turn
         self._rules = rules or self._build_default_rules(
             max_cost=max_cost,
             max_tokens=max_tokens,
@@ -69,7 +76,13 @@ class Guard:
     def session(self) -> Generator[Session, None, None]:
         record = SessionRecord(agent_name=self.agent_name)
         breaker = CircuitBreaker(rules=self._rules)
-        session = Session(record=record, storage=self._storage, breaker=breaker)
+        session = Session(
+            record=record,
+            storage=self._storage,
+            breaker=breaker,
+            on_trip=self._on_trip,
+            on_turn=self._on_turn,
+        )
 
         try:
             yield session
