@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
@@ -10,6 +10,7 @@ from agentguard.models import BreakerEvent, SessionRecord, Turn
 from agentguard.recorder import Recorder
 from agentguard.rules.base import SessionState
 from agentguard.storage import Storage
+from agentguard.streaming import GuardedStream, OpenAIStreamAccumulator
 
 OnTripCallback = Callable[[BreakerEvent, SessionRecord], None]
 OnTurnCallback = Callable[[Turn, SessionRecord], None]
@@ -39,9 +40,7 @@ class Session:
             self._trip(event)
             raise CircuitBreakerTripped(event)
 
-        input_data = kwargs.get("messages", list(args[:1]))
-        if not isinstance(input_data, list):
-            input_data = [{"raw": str(input_data)}]
+        input_data = self._input_data_from_kwargs(args, kwargs)
 
         start = time.perf_counter()
         try:
@@ -67,6 +66,73 @@ class Session:
             raise CircuitBreakerTripped(event)
 
         return response
+
+    def stream(self, fn: Callable, *args: Any, **kwargs: Any) -> GuardedStream:
+        event = self._breaker.evaluate(self._state)
+        if event:
+            self._trip(event)
+            raise CircuitBreakerTripped(event)
+
+        input_data = self._input_data_from_kwargs(args, kwargs)
+        start = time.perf_counter()
+        accumulator = OpenAIStreamAccumulator()
+
+        try:
+            raw_stream = fn(*args, **kwargs)
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start) * 1000
+            turn = self._recorder.record_error(input_data, e, latency_ms)
+            self._state.add_turn(turn)
+            raise
+
+        if isinstance(raw_stream, (dict, str, bytes)):
+            raise TypeError(
+                "stream() expects fn() to return an iterator of chunks; "
+                f"got {type(raw_stream).__name__}. Use session.call() for non-streaming responses."
+            )
+        try:
+            stream_iter = iter(raw_stream)
+        except TypeError as exc:
+            raise TypeError(
+                "stream() expects fn() to return an iterator of chunks. "
+                "Use session.call() for non-streaming responses."
+            ) from exc
+
+        def on_complete(_: Any) -> None:
+            latency_ms = (time.perf_counter() - start) * 1000
+            response = accumulator.as_response()
+            turn = self._recorder.record_turn(
+                input_data, response, OpenAIExtractor(), latency_ms
+            )
+            if self._on_turn:
+                self._on_turn(turn, self._record)
+            self._state.add_turn(turn)
+            event = self._breaker.evaluate(self._state)
+            if event:
+                self._trip(event)
+                raise CircuitBreakerTripped(event)
+
+        def on_error(exc: Exception) -> None:
+            latency_ms = (time.perf_counter() - start) * 1000
+            turn = self._recorder.record_error(input_data, exc, latency_ms)
+            self._state.add_turn(turn)
+
+        def tracking_stream() -> Iterator[Any]:
+            for chunk in stream_iter:
+                accumulator.consume(chunk)
+                yield chunk
+
+        return GuardedStream(
+            tracking_stream(),
+            on_complete=on_complete,
+            on_error=on_error,
+        )
+
+    def _input_data_from_kwargs(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> list:
+        input_data = kwargs.get("messages", list(args[:1]))
+        if not isinstance(input_data, list):
+            input_data = [{"raw": str(input_data)}]
+        return input_data
 
     def _trip(self, event: BreakerEvent) -> None:
         self._record.breaker_event = event
