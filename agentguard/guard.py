@@ -46,6 +46,17 @@ class Guard:
         warn_pct: float | None = None,
         on_warn: OnWarnCallback | None = None,
     ):
+        self._validate_params(
+            max_cost=max_cost,
+            max_tokens=max_tokens,
+            max_turns=max_turns,
+            max_tool_retries=max_tool_retries,
+            timeout=timeout,
+            similarity_threshold=similarity_threshold,
+            warn_cost=warn_cost,
+            warn_pct=warn_pct,
+        )
+
         self.agent_name = agent_name
         self._storage = Storage(db_path=db_path)
         self._on_trip = on_trip
@@ -84,6 +95,31 @@ class Guard:
         if warn_pct is not None and effective_max_cost is None:
             raise ValueError("warn_pct requires max_cost to be set (directly or via BudgetRule).")
         self._max_cost = effective_max_cost
+
+    @staticmethod
+    def _validate_params(**kwargs: object) -> None:
+        """Raise ValueError for nonsensical parameter values."""
+        _check_positive = {
+            "max_cost": kwargs.get("max_cost"),
+            "max_tokens": kwargs.get("max_tokens"),
+            "max_turns": kwargs.get("max_turns"),
+            "max_tool_retries": kwargs.get("max_tool_retries"),
+            "timeout": kwargs.get("timeout"),
+            "warn_cost": kwargs.get("warn_cost"),
+        }
+        for name, value in _check_positive.items():
+            if value is not None and value <= 0:
+                raise ValueError(f"{name} must be positive, got {value}")
+
+        similarity = kwargs.get("similarity_threshold")
+        if similarity is not None and not (0.0 < similarity <= 1.0):
+            raise ValueError(
+                f"similarity_threshold must be in (0, 1], got {similarity}"
+            )
+
+        warn_pct = kwargs.get("warn_pct")
+        if warn_pct is not None and not (0.0 < warn_pct < 1.0):
+            raise ValueError(f"warn_pct must be in (0, 1), got {warn_pct}")
 
     @staticmethod
     def _max_cost_from_rules(rules: list[BaseRule]) -> float | None:
