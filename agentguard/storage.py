@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import Generator
 
 from agentguard.models import BreakerEvent, SessionRecord, Turn
+
+_VALID_META_KEY = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_.\-]*$")
 
 _DEFAULT_DB = os.path.join(Path.home(), ".agentguard", "agentguard.db")
 
@@ -202,6 +205,12 @@ class Storage:
             params.append(f"{parent_session_id_prefix}%")
         if metadata:
             for key, value in metadata.items():
+                if not _VALID_META_KEY.match(key):
+                    raise ValueError(
+                        f"Invalid metadata key: {key!r}. "
+                        "Keys must be alphanumeric/underscore/dot/hyphen, "
+                        "starting with a letter or underscore."
+                    )
                 query += " AND json_extract(metadata_json, '$.' || ?) = ?"
                 params.extend([key, value])
 
