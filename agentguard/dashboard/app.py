@@ -33,7 +33,7 @@ async def index(
         agent_name=agent, status=status, metadata=metadata, limit=100
     )
     stats = storage.get_stats(agent_name=agent)
-    return templates.TemplateResponse("index.html", {
+    return templates.TemplateResponse(request, "index.html", {
         "request": request,
         "sessions": sessions,
         "stats": stats,
@@ -51,7 +51,7 @@ async def session_detail(request: Request, session_id: str):
         return HTMLResponse("<h1>Session not found</h1>", status_code=404)
     ancestors = storage.get_session_ancestors(session_id)
     children = storage.list_child_sessions(session_id)
-    return templates.TemplateResponse("session.html", {
+    return templates.TemplateResponse(request, "session.html", {
         "request": request,
         "session": record,
         "ancestors": ancestors,
@@ -70,7 +70,7 @@ async def stats_page(request: Request):
         "error": stats["errors"],
     }
 
-    return templates.TemplateResponse("stats.html", {
+    return templates.TemplateResponse(request, "stats.html", {
         "request": request,
         "stats": stats,
         "cost_by_agent": cost_by_agent,
