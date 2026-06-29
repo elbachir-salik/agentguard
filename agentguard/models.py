@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import TypedDict
 
 
 def _now() -> str:
@@ -63,3 +64,31 @@ class SessionRecord:
         self.status = status
         self.total_tokens = sum(t.tokens_in + t.tokens_out for t in self.turns)
         self.total_cost_usd = sum(t.cost_usd for t in self.turns)
+
+
+class SessionSummary(TypedDict):
+    session_id: str
+    agent_name: str
+    started_at: str
+    ended_at: str | None
+    status: str
+    total_tokens: int | None
+    total_cost_usd: float | None
+    metadata: dict
+    parent_session_id: str | None
+
+
+class AncestorInfo(TypedDict):
+    session_id: str
+    agent_name: str
+    status: str
+    parent_session_id: str | None
+
+
+class StatsResult(TypedDict):
+    total_sessions: int
+    total_tokens: int
+    total_cost_usd: float
+    trips: int
+    completed: int
+    errors: int

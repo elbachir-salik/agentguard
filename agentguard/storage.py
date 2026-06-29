@@ -9,7 +9,14 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Generator
 
-from agentguard.models import BreakerEvent, SessionRecord, Turn
+from agentguard.models import (
+    AncestorInfo,
+    BreakerEvent,
+    SessionRecord,
+    SessionSummary,
+    StatsResult,
+    Turn,
+)
 
 _VALID_META_KEY = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_.\-]*$")
 
@@ -185,7 +192,7 @@ class Storage:
         parent_session_id: str | None = None,
         parent_session_id_prefix: str | None = None,
         limit: int = 50,
-    ) -> list[dict]:
+    ) -> list[SessionSummary]:
         query = """SELECT session_id, agent_name, started_at, ended_at, status,
                           total_tokens, total_cost_usd, metadata_json, parent_session_id
                    FROM sessions WHERE 1=1"""
@@ -219,23 +226,27 @@ class Storage:
 
         with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
-            results = []
+            results: list[SessionSummary] = []
             for r in rows:
-                item = dict(r)
-                if item.get("metadata_json"):
-                    item["metadata"] = json.loads(item["metadata_json"])
-                else:
-                    item["metadata"] = {}
-                del item["metadata_json"]
-                results.append(item)
+                results.append(SessionSummary(
+                    session_id=r["session_id"],
+                    agent_name=r["agent_name"],
+                    started_at=r["started_at"],
+                    ended_at=r["ended_at"],
+                    status=r["status"],
+                    total_tokens=r["total_tokens"],
+                    total_cost_usd=r["total_cost_usd"],
+                    metadata=json.loads(r["metadata_json"]) if r["metadata_json"] else {},
+                    parent_session_id=r["parent_session_id"],
+                ))
             return results
 
-    def list_child_sessions(self, parent_session_id: str, limit: int = 50) -> list[dict]:
+    def list_child_sessions(self, parent_session_id: str, limit: int = 50) -> list[SessionSummary]:
         return self.list_sessions(parent_session_id=parent_session_id, limit=limit)
 
-    def get_session_ancestors(self, session_id: str) -> list[dict]:
+    def get_session_ancestors(self, session_id: str) -> list[AncestorInfo]:
         """Return ancestor sessions root-first (lightweight — no turn data loaded)."""
-        ancestors: list[dict] = []
+        ancestors: list[AncestorInfo] = []
         seen: set[str] = set()
 
         with self._connection() as conn:
@@ -257,35 +268,48 @@ class Storage:
                 ).fetchone()
 
                 if parent_row:
-                    ancestors.insert(0, {
-                        "session_id": parent_row["session_id"],
-                        "agent_name": parent_row["agent_name"],
-                        "status": parent_row["status"],
-                        "parent_session_id": parent_row["parent_session_id"],
-                    })
+                    ancestors.insert(0, AncestorInfo(
+                        session_id=parent_row["session_id"],
+                        agent_name=parent_row["agent_name"],
+                        status=parent_row["status"],
+                        parent_session_id=parent_row["parent_session_id"],
+                    ))
                     current_parent = parent_row["parent_session_id"]
                 else:
-                    ancestors.insert(0, {
-                        "session_id": current_parent,
-                        "agent_name": "?",
-                        "status": "unknown",
-                        "parent_session_id": None,
-                    })
+                    ancestors.insert(0, AncestorInfo(
+                        session_id=current_parent,
+                        agent_name="?",
+                        status="unknown",
+                        parent_session_id=None,
+                    ))
                     break
 
         return ancestors
 
-    def find_sessions_by_prefix(self, session_id_prefix: str) -> list[dict]:
+    def find_sessions_by_prefix(self, session_id_prefix: str) -> list[SessionSummary]:
         with self._connection() as conn:
             rows = conn.execute(
                 """SELECT session_id, agent_name, started_at, ended_at, status,
-                          total_tokens, total_cost_usd
+                          total_tokens, total_cost_usd, metadata_json, parent_session_id
                    FROM sessions
                    WHERE session_id LIKE ?
                    ORDER BY started_at DESC""",
                 (f"{session_id_prefix}%",),
             ).fetchall()
-            return [dict(r) for r in rows]
+            return [
+                SessionSummary(
+                    session_id=r["session_id"],
+                    agent_name=r["agent_name"],
+                    started_at=r["started_at"],
+                    ended_at=r["ended_at"],
+                    status=r["status"],
+                    total_tokens=r["total_tokens"],
+                    total_cost_usd=r["total_cost_usd"],
+                    metadata=json.loads(r["metadata_json"]) if r["metadata_json"] else {},
+                    parent_session_id=r["parent_session_id"],
+                )
+                for r in rows
+            ]
 
     def get_cost_by_agent(self) -> dict[str, float]:
         with self._connection() as conn:
@@ -309,7 +333,7 @@ class Storage:
             values = [row["total_cost"] or 0.0 for row in rows]
             return labels, values
 
-    def get_stats(self, agent_name: str | None = None) -> dict:
+    def get_stats(self, agent_name: str | None = None) -> StatsResult:
         query = """SELECT
             COUNT(*) as total_sessions,
             SUM(total_tokens) as total_tokens,
@@ -327,11 +351,11 @@ class Storage:
         with self._connection() as conn:
             row = conn.execute(query, params).fetchone()
 
-            return {
-                "total_sessions": row["total_sessions"],
-                "total_tokens": row["total_tokens"] or 0,
-                "total_cost_usd": row["total_cost"] or 0.0,
-                "trips": row["trips"],
-                "completed": row["completed"],
-                "errors": row["errors"],
-            }
+            return StatsResult(
+                total_sessions=row["total_sessions"],
+                total_tokens=row["total_tokens"] or 0,
+                total_cost_usd=row["total_cost"] or 0.0,
+                trips=row["trips"],
+                completed=row["completed"],
+                errors=row["errors"],
+            )
