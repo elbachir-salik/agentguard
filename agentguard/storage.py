@@ -20,7 +20,10 @@ from agentguard.models import (
 
 _VALID_META_KEY = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_.\-]*$")
 
-_DEFAULT_DB = os.path.join(Path.home(), ".agentguard", "agentguard.db")
+_DEFAULT_DB = os.environ.get(
+    "AGENTGUARD_DB_PATH",
+    os.path.join(Path.home(), ".agentguard", "agentguard.db"),
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (

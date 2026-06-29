@@ -245,7 +245,7 @@ def dashboard(host, port):
         console.print(f"[bold green]Starting dashboard at http://{host}:{port}[/bold green]")
         uvicorn.run(app, host=host, port=port, log_level="info")
     except ImportError:
-        console.print("[red]Dashboard dependencies missing. Install with: pip install agentguard[/red]")
+        console.print("[red]Dashboard dependencies missing. Install with: pip install agentguard[dashboard][/red]")
 
 
 if __name__ == "__main__":

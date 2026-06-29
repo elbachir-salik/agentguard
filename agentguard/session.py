@@ -205,6 +205,39 @@ class Session:
     def record(self) -> SessionRecord:
         return self._record
 
+    def begin_turn(self, input_messages: list) -> None:
+        """Pre-check breaker before an external provider call (e.g. LangChain)."""
+        with self._lock:
+            event = self._breaker.evaluate(self._state)
+            if event:
+                self._trip(event)
+                raise CircuitBreakerTripped(event)
+
+    def record_response(
+        self,
+        input_messages: list,
+        response: Any,
+        *,
+        extractor: BaseExtractor | None = None,
+        latency_ms: float = 0.0,
+    ) -> Turn:
+        """Record a successful turn from an external integration."""
+        ext = extractor or self._detect_extractor(response)
+        return self._record_success(input_messages, response, ext, latency_ms)
+
+    def record_failure(
+        self,
+        input_messages: list,
+        error: Exception,
+        *,
+        latency_ms: float = 0.0,
+    ) -> Turn:
+        """Record a failed turn from an external integration."""
+        with self._lock:
+            turn = self._recorder.record_error(input_messages, error, latency_ms)
+            self._state.add_turn(turn)
+            return turn
+
     # ------------------------------------------------------------------
     # Internal helpers (shared by call/acall/stream/astream)
     # ------------------------------------------------------------------
@@ -220,7 +253,7 @@ class Session:
 
     def _record_success(
         self, input_data: list, response: Any, extractor: BaseExtractor, latency_ms: float
-    ) -> None:
+    ) -> Turn:
         """Record a successful turn, fire callbacks, check warnings/trip."""
         with self._lock:
             turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
@@ -231,6 +264,7 @@ class Session:
 
             self._check_warnings()
             self._check_post_trip()
+            return turn
 
     def _record_error(self, input_data: list, exc: Exception, elapsed_s: float) -> None:
         """Record a failed turn (no callbacks, no trip check)."""
