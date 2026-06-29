@@ -123,7 +123,11 @@ class _AssembledOpenAIResponse:
 
 
 class GuardedStream:
-    """Transparent iterator wrapper that records after the stream finishes."""
+    """Transparent iterator wrapper that records after the stream finishes.
+
+    Supports use as a context manager (``with session.stream(...) as stream:``)
+    to ensure the underlying stream is closed on early exit.
+    """
 
     def __init__(
         self,
@@ -136,6 +140,21 @@ class GuardedStream:
         self._on_complete = on_complete
         self._on_error = on_error
         self._finalized = False
+
+    def __enter__(self) -> GuardedStream:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if not self._finalized:
+            if exc_val is not None:
+                self._finalize_error(exc_val)
+            else:
+                self._finalize_error(
+                    RuntimeError("Stream closed before completion")
+                )
+        close = getattr(self._stream, "close", None)
+        if callable(close):
+            close()
 
     def __iter__(self) -> GuardedStream:
         return self
@@ -166,7 +185,11 @@ class GuardedStream:
 
 
 class GuardedAsyncStream:
-    """Transparent async iterator wrapper that records after the stream finishes."""
+    """Transparent async iterator wrapper that records after the stream finishes.
+
+    Supports use as an async context manager (``async with session.astream(...) as stream:``)
+    to ensure the underlying stream is closed on early exit.
+    """
 
     def __init__(
         self,
@@ -180,6 +203,21 @@ class GuardedAsyncStream:
         self._on_error = on_error
         self._finalized = False
         self._aiter = stream.__aiter__()
+
+    async def __aenter__(self) -> GuardedAsyncStream:
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if not self._finalized:
+            if exc_val is not None:
+                self._finalize_error(exc_val)
+            else:
+                self._finalize_error(
+                    RuntimeError("Stream closed before completion")
+                )
+        aclose = getattr(self._stream, "aclose", None)
+        if callable(aclose):
+            await aclose()
 
     def __aiter__(self) -> GuardedAsyncStream:
         return self
