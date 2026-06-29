@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/salikelbachir/agentguard/actions/workflows/ci.yml/badge.svg)](https://github.com/salikelbachir/agentguard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://salikelbachir.github.io/agentguard/)
 
 **The black box + circuit breaker for AI agents.**
 
@@ -46,8 +45,50 @@ Or from source:
 ```bash
 git clone https://github.com/salikelbachir/agentguard.git
 cd agentguard
-pip install -e .
+pip install -e ".[dashboard]"
 ```
+
+For LangChain integration:
+
+```bash
+pip install agentguard[langchain]
+```
+
+---
+
+## Docker
+
+Build and run the dashboard in a container:
+
+```bash
+docker build -t agentguard .
+docker run -p 8585:8585 -v agentguard-data:/data agentguard
+```
+
+Open [http://localhost:8585](http://localhost:8585). Session data is persisted in the `agentguard-data` volume at `/data/agentguard.db`.
+
+---
+
+## LangChain / LangGraph
+
+Use AgentGuard with LangChain via a callback handler — pass it to any chat model:
+
+```python
+from agentguard import Guard
+from agentguard.integrations.langchain import guard_session
+from langchain_openai import ChatOpenAI
+
+guard = Guard(agent_name="my-agent", max_turns=20, max_tool_retries=3)
+
+with guard_session(guard) as (session, callbacks):
+    llm = ChatOpenAI(model="gpt-4o", callbacks=callbacks)
+    response = llm.invoke("Hello!")
+    print(session.summary())
+```
+
+For LangGraph, pass the same callback list to the chat model inside your graph node.
+
+See [`examples/langchain_basic.py`](examples/langchain_basic.py) for a no-API-key demo using `FakeListChatModel`.
 
 ---
 
