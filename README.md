@@ -60,6 +60,7 @@ Real-time protection with composable rules:
 | Rule | What it catches | Config |
 |------|----------------|--------|
 | **Budget** | Cost or token limit exceeded | `max_cost=5.00`, `max_tokens=100000` |
+| **Budget warning** | Soft alert before hard trip (no stop) | `warn_cost=4.00`, `warn_pct=0.8`, `on_warn=...` |
 | **Turns** | Too many LLM calls in one session | `max_turns=20` |
 | **Loop Detection** | Same tool called repeatedly with similar input | `max_tool_retries=3` |
 | **Timeout** | Session running too long | `timeout=60` |
@@ -89,6 +90,31 @@ with guard.session() as session:
 ```
 
 Use `stream_options={"include_usage": True}` so token counts are captured on the final chunk.
+
+### Async
+
+For async clients (e.g. `AsyncOpenAI`), use `acall` and `astream` inside a normal `with guard.session()` block:
+
+```python
+with guard.session() as session:
+    response = await session.acall(
+        client.chat.completions.create,
+        model="gpt-4o",
+        messages=messages,
+    )
+
+    stream = await session.astream(
+        client.chat.completions.create,
+        model="gpt-4o",
+        messages=messages,
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+    async for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            print(delta, end="")
+```
 
 ### 3. CLI
 
@@ -180,6 +206,29 @@ Filter in CLI:
 agentguard sessions --meta env=staging --meta customer_id=4521
 ```
 
+### Multi-Agent Linking
+
+Link child sessions to a parent when one agent spawns another. The dashboard shows the full chain (parent → children):
+
+```python
+orchestrator = Guard(agent_name="orchestrator")
+worker = Guard(agent_name="worker")
+
+with orchestrator.session() as parent:
+    parent.call(plan_task, ...)
+
+    with worker.session(parent_session_id=parent.record.session_id) as child:
+        child.call(run_subtask, ...)
+```
+
+List child sessions in the CLI:
+
+```bash
+agentguard sessions --parent <parent_session_id>
+```
+
+Exported JSON includes `parent_session_id` for each session.
+
 ### Callbacks
 
 Register hooks that fire on every turn or when the circuit breaker trips. Use them for logging, Slack alerts, metrics, or custom recovery logic:
@@ -187,7 +236,7 @@ Register hooks that fire on every turn or when the circuit breaker trips. Use th
 ```python
 import logging
 from agentguard import Guard
-from agentguard.models import BreakerEvent, SessionRecord, Turn
+from agentguard.models import BreakerEvent, SessionRecord, Turn, WarnEvent
 
 logger = logging.getLogger(__name__)
 
@@ -198,10 +247,15 @@ def on_trip(event: BreakerEvent, record: SessionRecord) -> None:
     logger.warning("Tripped [%s]: %s (session %s)", event.rule, event.trigger, record.session_id)
     # send_slack_alert(event, record)  # your integration here
 
+def on_warn(event: WarnEvent, record: SessionRecord) -> None:
+    logger.warning("Budget warning: %s (session %s)", event.trigger, record.session_id)
+
 guard = Guard(
     agent_name="support-bot",
     max_cost=5.00,
+    warn_pct=0.8,          # alert at 80% of max_cost
     on_turn=on_turn,
+    on_warn=on_warn,
     on_trip=on_trip,
 )
 ```
