@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
+from typing import Generator
 
 from agentguard.models import BreakerEvent, SessionRecord, Turn
 
@@ -54,9 +56,8 @@ class Storage:
         self._init_db()
 
     def _init_db(self) -> None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.executescript(_SCHEMA)
-            conn.execute("PRAGMA journal_mode=WAL")
             self._migrate(conn)
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
@@ -69,16 +70,25 @@ class Storage:
             "CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)"
         )
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def save_session(self, record: SessionRecord) -> None:
         breaker_json = json.dumps(asdict(record.breaker_event)) if record.breaker_event else None
         metadata_json = json.dumps(record.metadata) if record.metadata else None
 
-        with self._connect() as conn:
+        with self._connection() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO sessions
                    (session_id, agent_name, started_at, ended_at, status,
@@ -112,7 +122,7 @@ class Storage:
                 )
 
     def get_session(self, session_id: str) -> SessionRecord | None:
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(
                 "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
             ).fetchone()
@@ -198,7 +208,7 @@ class Storage:
         query += " ORDER BY started_at DESC LIMIT ?"
         params.append(limit)
 
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
             results = []
             for r in rows:
@@ -244,7 +254,7 @@ class Storage:
         return ancestors
 
     def find_sessions_by_prefix(self, session_id_prefix: str) -> list[dict]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 """SELECT session_id, agent_name, started_at, ended_at, status,
                           total_tokens, total_cost_usd
@@ -256,7 +266,7 @@ class Storage:
             return [dict(r) for r in rows]
 
     def get_cost_by_agent(self) -> dict[str, float]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 """SELECT agent_name, SUM(total_cost_usd) as total_cost
                    FROM sessions
@@ -266,7 +276,7 @@ class Storage:
             return {row["agent_name"]: row["total_cost"] or 0.0 for row in rows}
 
     def get_daily_costs(self) -> tuple[list[str], list[float]]:
-        with self._connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(
                 """SELECT substr(started_at, 1, 10) as day, SUM(total_cost_usd) as total_cost
                    FROM sessions
@@ -292,7 +302,7 @@ class Storage:
             query += " WHERE agent_name = ?"
             params.append(agent_name)
 
-        with self._connect() as conn:
+        with self._connection() as conn:
             row = conn.execute(query, params).fetchone()
 
             return {
