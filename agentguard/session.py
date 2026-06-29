@@ -78,11 +78,11 @@ class Session:
         with self._lock:
             extractor = self._detect_extractor(response)
             turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
+            self._state.add_turn(turn)
 
             if self._on_turn:
                 self._on_turn(turn, self._record)
 
-            self._state.add_turn(turn)
             self._check_warnings()
             self._check_post_trip()
 
@@ -115,11 +115,11 @@ class Session:
         with self._lock:
             extractor = self._detect_extractor(response)
             turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
+            self._state.add_turn(turn)
 
             if self._on_turn:
                 self._on_turn(turn, self._record)
 
-            self._state.add_turn(turn)
             self._check_warnings()
             self._check_post_trip()
         return response
@@ -165,9 +165,9 @@ class Session:
                 turn = self._recorder.record_turn(
                     input_data, response, OpenAIExtractor(), latency_ms
                 )
+                self._state.add_turn(turn)
                 if self._on_turn:
                     self._on_turn(turn, self._record)
-                self._state.add_turn(turn)
                 self._check_warnings()
                 self._check_post_trip()
 
@@ -231,9 +231,9 @@ class Session:
                 turn = self._recorder.record_turn(
                     input_data, response, OpenAIExtractor(), latency_ms
                 )
+                self._state.add_turn(turn)
                 if self._on_turn:
                     self._on_turn(turn, self._record)
-                self._state.add_turn(turn)
                 self._check_warnings()
                 self._check_post_trip()
 
