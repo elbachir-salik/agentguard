@@ -99,8 +99,8 @@ class Guard:
         return rules
 
     @contextmanager
-    def session(self) -> Generator[Session, None, None]:
-        record = SessionRecord(agent_name=self.agent_name)
+    def session(self, metadata: dict | None = None) -> Generator[Session, None, None]:
+        record = SessionRecord(agent_name=self.agent_name, metadata=metadata or {})
         breaker = CircuitBreaker(rules=self._rules)
         session = Session(
             record=record,

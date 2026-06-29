@@ -47,6 +47,7 @@ class SessionRecord:
     total_tokens: int = 0
     total_cost_usd: float = 0.0
     breaker_event: BreakerEvent | None = None
+    metadata: dict = field(default_factory=dict)
 
     def finalize(self, status: str = "completed") -> None:
         self.ended_at = _now()

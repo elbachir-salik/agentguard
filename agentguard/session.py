@@ -92,6 +92,7 @@ class Session:
             "total_tokens": total_tokens,
             "total_cost_usd": round(total_cost, 6),
             "status": self._record.status,
+            "metadata": self._record.metadata,
         }
 
     def _save(self) -> None:

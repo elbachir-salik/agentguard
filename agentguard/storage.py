@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     total_tokens INTEGER,
     total_cost_usd REAL,
     breaker_event_json TEXT,
+    metadata_json TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -56,6 +57,12 @@ class Storage:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
             conn.execute("PRAGMA journal_mode=WAL")
+            self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
+        if "metadata_json" not in columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN metadata_json TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -64,17 +71,18 @@ class Storage:
 
     def save_session(self, record: SessionRecord) -> None:
         breaker_json = json.dumps(asdict(record.breaker_event)) if record.breaker_event else None
+        metadata_json = json.dumps(record.metadata) if record.metadata else None
 
         with self._connect() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO sessions
                    (session_id, agent_name, started_at, ended_at, status,
-                    total_tokens, total_cost_usd, breaker_event_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    total_tokens, total_cost_usd, breaker_event_json, metadata_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     record.session_id, record.agent_name, record.started_at,
                     record.ended_at, record.status, record.total_tokens,
-                    record.total_cost_usd, breaker_json,
+                    record.total_cost_usd, breaker_json, metadata_json,
                 ),
             )
 
@@ -131,6 +139,10 @@ class Storage:
                 be = json.loads(row["breaker_event_json"])
                 breaker_event = BreakerEvent(**be)
 
+            metadata = {}
+            if row["metadata_json"]:
+                metadata = json.loads(row["metadata_json"])
+
             return SessionRecord(
                 session_id=row["session_id"],
                 agent_name=row["agent_name"],
@@ -141,6 +153,7 @@ class Storage:
                 total_tokens=row["total_tokens"] or 0,
                 total_cost_usd=row["total_cost_usd"] or 0.0,
                 breaker_event=breaker_event,
+                metadata=metadata,
             )
 
     def list_sessions(
@@ -149,7 +162,9 @@ class Storage:
         status: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        query = "SELECT session_id, agent_name, started_at, ended_at, status, total_tokens, total_cost_usd FROM sessions WHERE 1=1"
+        query = """SELECT session_id, agent_name, started_at, ended_at, status,
+                          total_tokens, total_cost_usd, metadata_json
+                   FROM sessions WHERE 1=1"""
         params: list = []
 
         if agent_name:
@@ -164,7 +179,16 @@ class Storage:
 
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
-            return [dict(r) for r in rows]
+            results = []
+            for r in rows:
+                item = dict(r)
+                if item.get("metadata_json"):
+                    item["metadata"] = json.loads(item["metadata_json"])
+                else:
+                    item["metadata"] = {}
+                del item["metadata_json"]
+                results.append(item)
+            return results
 
     def find_sessions_by_prefix(self, session_id_prefix: str) -> list[dict]:
         with self._connect() as conn:
