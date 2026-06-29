@@ -5,7 +5,7 @@ from typing import Callable, Generator
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
-from agentguard.models import BreakerEvent, SessionRecord, Turn
+from agentguard.models import BreakerEvent, SessionRecord, Turn, WarnEvent
 from agentguard.rules import BudgetRule, LoopRule, ScopeRule, TimeoutRule, TurnsRule
 from agentguard.rules.base import BaseRule
 from agentguard.session import Session
@@ -13,6 +13,7 @@ from agentguard.storage import Storage
 
 OnTripCallback = Callable[[BreakerEvent, SessionRecord], None]
 OnTurnCallback = Callable[[Turn, SessionRecord], None]
+OnWarnCallback = Callable[[WarnEvent, SessionRecord], None]
 
 _CONVENIENCE_KWARGS = (
     "max_cost",
@@ -41,11 +42,17 @@ class Guard:
         rules: list[BaseRule] | None = None,
         on_trip: OnTripCallback | None = None,
         on_turn: OnTurnCallback | None = None,
+        warn_cost: float | None = None,
+        warn_pct: float | None = None,
+        on_warn: OnWarnCallback | None = None,
     ):
         self.agent_name = agent_name
         self._storage = Storage(db_path=db_path)
         self._on_trip = on_trip
         self._on_turn = on_turn
+        self._warn_cost = warn_cost
+        self._warn_pct = warn_pct
+        self._on_warn = on_warn
 
         convenience = {
             "max_cost": max_cost,
@@ -72,6 +79,18 @@ class Guard:
             allowed_tools=allowed_tools,
             blocked_tools=blocked_tools,
         )
+
+        effective_max_cost = max_cost if max_cost is not None else self._max_cost_from_rules(self._rules)
+        if warn_pct is not None and effective_max_cost is None:
+            raise ValueError("warn_pct requires max_cost to be set (directly or via BudgetRule).")
+        self._max_cost = effective_max_cost
+
+    @staticmethod
+    def _max_cost_from_rules(rules: list[BaseRule]) -> float | None:
+        for rule in rules:
+            if isinstance(rule, BudgetRule) and rule.max_cost_usd is not None:
+                return rule.max_cost_usd
+        return None
 
     def _build_default_rules(self, **kwargs) -> list[BaseRule]:
         rules: list[BaseRule] = []
@@ -108,6 +127,10 @@ class Guard:
             breaker=breaker,
             on_trip=self._on_trip,
             on_turn=self._on_turn,
+            on_warn=self._on_warn,
+            warn_cost=self._warn_cost,
+            warn_pct=self._warn_pct,
+            max_cost=self._max_cost,
         )
 
         try:

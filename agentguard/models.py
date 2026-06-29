@@ -37,6 +37,14 @@ class BreakerEvent:
 
 
 @dataclass
+class WarnEvent:
+    rule: str
+    trigger: str
+    turn: int
+    details: dict = field(default_factory=dict)
+
+
+@dataclass
 class SessionRecord:
     session_id: str = field(default_factory=_new_id)
     agent_name: str = ""

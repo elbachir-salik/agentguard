@@ -8,7 +8,7 @@ from typing import Any, Callable
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
 from agentguard.extractors import AnthropicExtractor, GenericExtractor, OpenAIExtractor
-from agentguard.models import BreakerEvent, SessionRecord, Turn
+from agentguard.models import BreakerEvent, SessionRecord, Turn, WarnEvent
 from agentguard.recorder import Recorder
 from agentguard.rules.base import SessionState
 from agentguard.storage import Storage
@@ -16,6 +16,7 @@ from agentguard.streaming import GuardedAsyncStream, GuardedStream, OpenAIStream
 
 OnTripCallback = Callable[[BreakerEvent, SessionRecord], None]
 OnTurnCallback = Callable[[Turn, SessionRecord], None]
+OnWarnCallback = Callable[[WarnEvent, SessionRecord], None]
 
 
 class Session:
@@ -26,6 +27,10 @@ class Session:
         breaker: CircuitBreaker | None = None,
         on_trip: OnTripCallback | None = None,
         on_turn: OnTurnCallback | None = None,
+        on_warn: OnWarnCallback | None = None,
+        warn_cost: float | None = None,
+        warn_pct: float | None = None,
+        max_cost: float | None = None,
     ):
         self._record = record
         self._storage = storage
@@ -35,6 +40,11 @@ class Session:
         self._state.start_time = time.time()
         self._on_trip = on_trip
         self._on_turn = on_turn
+        self._on_warn = on_warn
+        self._warn_cost = warn_cost
+        self._warn_pct = warn_pct
+        self._max_cost = max_cost
+        self._warned = False
 
     def call(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         event = self._breaker.evaluate(self._state)
@@ -61,6 +71,7 @@ class Session:
             self._on_turn(turn, self._record)
 
         self._state.add_turn(turn)
+        self._check_warnings()
         self._check_post_trip()
 
         return response
@@ -93,6 +104,7 @@ class Session:
             self._on_turn(turn, self._record)
 
         self._state.add_turn(turn)
+        self._check_warnings()
         self._check_post_trip()
         return response
 
@@ -136,6 +148,7 @@ class Session:
             if self._on_turn:
                 self._on_turn(turn, self._record)
             self._state.add_turn(turn)
+            self._check_warnings()
             self._check_post_trip()
 
         def on_error(exc: Exception) -> None:
@@ -196,6 +209,7 @@ class Session:
             if self._on_turn:
                 self._on_turn(turn, self._record)
             self._state.add_turn(turn)
+            self._check_warnings()
             self._check_post_trip()
 
         def on_error(exc: Exception) -> None:
@@ -219,6 +233,49 @@ class Session:
         if event:
             self._trip(event)
             raise CircuitBreakerTripped(event)
+
+    def _check_warnings(self) -> None:
+        if self._warned or not self._on_warn:
+            return
+
+        cost = self._state.total_cost
+        event: WarnEvent | None = None
+
+        if self._warn_cost is not None and cost >= self._warn_cost:
+            event = WarnEvent(
+                rule="budget",
+                trigger=(
+                    f"Cost warning: ${cost:.4f} >= ${self._warn_cost:.4f} (warn_cost)"
+                ),
+                turn=len(self._state.turns),
+                details={
+                    "kind": "warn_cost",
+                    "current_cost": cost,
+                    "warn_cost": self._warn_cost,
+                },
+            )
+        elif self._warn_pct is not None and self._max_cost is not None:
+            threshold = self._max_cost * self._warn_pct
+            if cost >= threshold:
+                event = WarnEvent(
+                    rule="budget",
+                    trigger=(
+                        f"Cost warning: ${cost:.4f} >= {self._warn_pct:.0%} "
+                        f"of ${self._max_cost:.4f} budget"
+                    ),
+                    turn=len(self._state.turns),
+                    details={
+                        "kind": "warn_pct",
+                        "current_cost": cost,
+                        "warn_pct": self._warn_pct,
+                        "max_cost": self._max_cost,
+                        "threshold": threshold,
+                    },
+                )
+
+        if event:
+            self._warned = True
+            self._on_warn(event, self._record)
 
     def _input_data_from_kwargs(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> list:
         input_data = kwargs.get("messages", list(args[:1]))
