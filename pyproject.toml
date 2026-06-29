@@ -41,6 +41,9 @@ langchain = [
 openai = [
     "openai>=1.0",
 ]
+fastapi = [
+    "fastapi>=0.100",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio",

@@ -60,6 +60,12 @@ For the OpenAI Python SDK wrapper:
 pip install agentguard[openai]
 ```
 
+For FastAPI integration:
+
+```bash
+pip install agentguard[fastapi]
+```
+
 ---
 
 ## OpenAI Python SDK
@@ -85,6 +91,36 @@ with guard_openai(guard, client) as (session, guarded):
 Works with sync and async clients (`AsyncOpenAI`), including streaming (`stream=True`).
 
 See [`examples/openai_guarded.py`](examples/openai_guarded.py) for a no-API-key mock demo.
+
+---
+
+## FastAPI
+
+One Guard session per HTTP request via a dependency. Trips return **HTTP 429** automatically.
+
+```python
+from fastapi import Depends, FastAPI
+from agentguard import Guard
+from agentguard.integrations.fastapi import create_session_dependency, setup_agentguard
+from agentguard.session import Session
+
+guard = Guard(agent_name="api-agent", max_turns=20, max_cost=1.00)
+
+app = FastAPI()
+setup_agentguard(app, guard)
+SessionDep = create_session_dependency()
+
+@app.post("/chat")
+async def chat(session: Session = Depends(SessionDep)):
+    response = session.call(client.chat.completions.create, model="gpt-4o", messages=[...])
+    return {"session_id": session.record.session_id, "turns": session.summary()["turns"]}
+```
+
+Install: `pip install agentguard[fastapi]`
+
+Each request gets metadata (`path`, `method`, `client_host`) for filtering in the dashboard/CLI.
+
+See [`examples/fastapi_agent.py`](examples/fastapi_agent.py) — run with `uvicorn examples.fastapi_agent:app --reload`.
 
 ---
 
