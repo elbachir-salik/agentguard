@@ -14,6 +14,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from agentguard.export import session_to_json
+from agentguard.models import SessionRecord
 from agentguard.storage import Storage
 
 console = Console(force_terminal=True)
@@ -40,6 +42,23 @@ def _format_metadata(metadata: dict) -> str:
     if not metadata:
         return ""
     return ", ".join(f"{k}={v}" for k, v in metadata.items())
+
+
+def _load_session(storage: Storage, session_id: str) -> SessionRecord | None:
+    matches = storage.find_sessions_by_prefix(session_id)
+
+    if not matches:
+        console.print(f"[red]Session '{session_id}' not found.[/red]")
+        return None
+    if len(matches) > 1:
+        console.print(f"[yellow]Ambiguous ID, {len(matches)} matches. Be more specific.[/yellow]")
+        return None
+
+    record = storage.get_session(matches[0]["session_id"])
+    if not record:
+        console.print("[red]Session not found.[/red]")
+        return None
+    return record
 
 
 @click.group()
@@ -94,19 +113,8 @@ def sessions(agent, status, meta, limit):
 def replay(session_id):
     """Replay a session turn by turn."""
     storage = Storage()
-
-    matches = storage.find_sessions_by_prefix(session_id)
-
-    if not matches:
-        console.print(f"[red]Session '{session_id}' not found.[/red]")
-        return
-    if len(matches) > 1:
-        console.print(f"[yellow]Ambiguous ID, {len(matches)} matches. Be more specific.[/yellow]")
-        return
-
-    record = storage.get_session(matches[0]["session_id"])
+    record = _load_session(storage, session_id)
     if not record:
-        console.print("[red]Session not found.[/red]")
         return
 
     lines: list[str] = []
@@ -166,6 +174,32 @@ def replay(session_id):
     title = f"agentguard -- {record.agent_name} -- {record.session_id}"
     panel = Panel("\n".join(lines), title=title, border_style="bold")
     console.print(panel)
+
+
+@main.command()
+@click.argument("session_id")
+@click.option("--format", "fmt", type=click.Choice(["json"]), default="json", show_default=True)
+@click.option("-o", "--output", default=None, help="Write to file instead of stdout")
+def export(session_id, fmt, output):
+    """Export a session to JSON for sharing or debugging."""
+    storage = Storage()
+    record = _load_session(storage, session_id)
+    if not record:
+        return
+
+    if fmt != "json":
+        console.print(f"[red]Unsupported format: {fmt}[/red]")
+        raise SystemExit(1)
+
+    payload = session_to_json(record)
+
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(payload)
+            f.write("\n")
+        console.print(f"[green]Exported session {record.session_id} to {output}[/green]")
+    else:
+        click.echo(payload)
 
 
 @main.command()

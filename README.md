@@ -75,6 +75,7 @@ Budget and turn limits allow the current LLM call to finish before tripping — 
 agentguard sessions                        # list all recorded sessions
 agentguard sessions --meta env=staging     # filter by metadata
 agentguard replay <session_id>             # replay a session turn by turn
+agentguard export <session_id>             # export session as JSON
 agentguard stats                           # cost and usage summary
 agentguard dashboard                       # local web UI at localhost:8585
 ```
@@ -185,6 +186,15 @@ guard = Guard(
 ```
 
 See [`examples/callbacks.py`](examples/callbacks.py) for a full example with logging and an optional Slack webhook (`SLACK_WEBHOOK_URL` env var).
+
+### Export a Session
+
+Dump a full session (turns, metadata, breaker event) as JSON for sharing or debugging:
+
+```bash
+agentguard export abc123def456
+agentguard export abc123 --output session.json
+```
 
 ---
 
