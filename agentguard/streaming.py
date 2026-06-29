@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterator
+from collections.abc import AsyncIterator, Iterator
+from typing import Any, Callable
 
 
 class OpenAIStreamAccumulator:
@@ -143,6 +144,50 @@ class GuardedStream:
         try:
             chunk = next(self._stream)
         except StopIteration:
+            self._finalize_success()
+            raise
+        except Exception as exc:
+            self._finalize_error(exc)
+            raise
+
+        return chunk
+
+    def _finalize_success(self) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
+        self._on_complete(None)
+
+    def _finalize_error(self, exc: Exception) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
+        self._on_error(exc)
+
+
+class GuardedAsyncStream:
+    """Transparent async iterator wrapper that records after the stream finishes."""
+
+    def __init__(
+        self,
+        stream: AsyncIterator[Any],
+        *,
+        on_complete: Callable[[Any], None],
+        on_error: Callable[[Exception], None],
+    ) -> None:
+        self._stream = stream
+        self._on_complete = on_complete
+        self._on_error = on_error
+        self._finalized = False
+        self._aiter = stream.__aiter__()
+
+    def __aiter__(self) -> GuardedAsyncStream:
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            chunk = await self._aiter.__anext__()
+        except StopAsyncIteration:
             self._finalize_success()
             raise
         except Exception as exc:

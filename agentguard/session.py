@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import inspect
 import time
-from typing import Any, Callable, Iterator
+from collections.abc import AsyncIterator, Iterator
+from typing import Any, Callable
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
@@ -10,7 +12,7 @@ from agentguard.models import BreakerEvent, SessionRecord, Turn
 from agentguard.recorder import Recorder
 from agentguard.rules.base import SessionState
 from agentguard.storage import Storage
-from agentguard.streaming import GuardedStream, OpenAIStreamAccumulator
+from agentguard.streaming import GuardedAsyncStream, GuardedStream, OpenAIStreamAccumulator
 
 OnTripCallback = Callable[[BreakerEvent, SessionRecord], None]
 OnTurnCallback = Callable[[Turn, SessionRecord], None]
@@ -59,12 +61,39 @@ class Session:
             self._on_turn(turn, self._record)
 
         self._state.add_turn(turn)
+        self._check_post_trip()
 
+        return response
+
+    async def acall(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         event = self._breaker.evaluate(self._state)
         if event:
             self._trip(event)
             raise CircuitBreakerTripped(event)
 
+        input_data = self._input_data_from_kwargs(args, kwargs)
+        start = time.perf_counter()
+        try:
+            result = fn(*args, **kwargs)
+            if inspect.isawaitable(result):
+                response = await result
+            else:
+                response = result
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start) * 1000
+            turn = self._recorder.record_error(input_data, e, latency_ms)
+            self._state.add_turn(turn)
+            raise
+
+        latency_ms = (time.perf_counter() - start) * 1000
+        extractor = self._detect_extractor(response)
+        turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
+
+        if self._on_turn:
+            self._on_turn(turn, self._record)
+
+        self._state.add_turn(turn)
+        self._check_post_trip()
         return response
 
     def stream(self, fn: Callable, *args: Any, **kwargs: Any) -> GuardedStream:
@@ -107,10 +136,7 @@ class Session:
             if self._on_turn:
                 self._on_turn(turn, self._record)
             self._state.add_turn(turn)
-            event = self._breaker.evaluate(self._state)
-            if event:
-                self._trip(event)
-                raise CircuitBreakerTripped(event)
+            self._check_post_trip()
 
         def on_error(exc: Exception) -> None:
             latency_ms = (time.perf_counter() - start) * 1000
@@ -127,6 +153,72 @@ class Session:
             on_complete=on_complete,
             on_error=on_error,
         )
+
+    async def astream(self, fn: Callable, *args: Any, **kwargs: Any) -> GuardedAsyncStream:
+        event = self._breaker.evaluate(self._state)
+        if event:
+            self._trip(event)
+            raise CircuitBreakerTripped(event)
+
+        input_data = self._input_data_from_kwargs(args, kwargs)
+        start = time.perf_counter()
+        accumulator = OpenAIStreamAccumulator()
+
+        try:
+            result = fn(*args, **kwargs)
+            if inspect.isawaitable(result):
+                raw_stream = await result
+            else:
+                raw_stream = result
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start) * 1000
+            turn = self._recorder.record_error(input_data, e, latency_ms)
+            self._state.add_turn(turn)
+            raise
+
+        if isinstance(raw_stream, (dict, str, bytes)):
+            raise TypeError(
+                "astream() expects fn() to return an async iterator of chunks; "
+                f"got {type(raw_stream).__name__}. Use session.acall() for non-streaming responses."
+            )
+        if not hasattr(raw_stream, "__aiter__"):
+            raise TypeError(
+                "astream() expects fn() to return an async iterator of chunks. "
+                "Use session.stream() for synchronous streaming responses."
+            )
+
+        def on_complete(_: Any) -> None:
+            latency_ms = (time.perf_counter() - start) * 1000
+            response = accumulator.as_response()
+            turn = self._recorder.record_turn(
+                input_data, response, OpenAIExtractor(), latency_ms
+            )
+            if self._on_turn:
+                self._on_turn(turn, self._record)
+            self._state.add_turn(turn)
+            self._check_post_trip()
+
+        def on_error(exc: Exception) -> None:
+            latency_ms = (time.perf_counter() - start) * 1000
+            turn = self._recorder.record_error(input_data, exc, latency_ms)
+            self._state.add_turn(turn)
+
+        async def tracking_stream() -> AsyncIterator[Any]:
+            async for chunk in raw_stream:
+                accumulator.consume(chunk)
+                yield chunk
+
+        return GuardedAsyncStream(
+            tracking_stream(),
+            on_complete=on_complete,
+            on_error=on_error,
+        )
+
+    def _check_post_trip(self) -> None:
+        event = self._breaker.evaluate(self._state)
+        if event:
+            self._trip(event)
+            raise CircuitBreakerTripped(event)
 
     def _input_data_from_kwargs(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> list:
         input_data = kwargs.get("messages", list(args[:1]))
