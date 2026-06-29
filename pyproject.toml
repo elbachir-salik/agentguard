@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentguard"
-version = "0.1.0"
+version = "0.2.0"
 description = "The black box + circuit breaker for AI agents"
 readme = "README.md"
 license = "MIT"
@@ -35,6 +35,9 @@ dashboard = [
     "uvicorn>=0.20",
     "jinja2>=3.0",
 ]
+langchain = [
+    "langchain-core>=0.2",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio",
@@ -42,6 +45,7 @@ dev = [
     "fastapi>=0.100",
     "uvicorn>=0.20",
     "jinja2>=3.0",
+    "langchain-core>=0.2",
 ]
 
 [project.scripts]
