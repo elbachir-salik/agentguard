@@ -225,32 +225,45 @@ class Storage:
         return self.list_sessions(parent_session_id=parent_session_id, limit=limit)
 
     def get_session_ancestors(self, session_id: str) -> list[dict]:
-        """Return ancestor sessions root-first (each is a list_sessions-style dict)."""
+        """Return ancestor sessions root-first (lightweight — no turn data loaded)."""
         ancestors: list[dict] = []
         seen: set[str] = set()
-        current = self.get_session(session_id)
-        while current and current.parent_session_id:
-            parent_id = current.parent_session_id
-            if parent_id in seen:
-                break
-            seen.add(parent_id)
-            parent = self.get_session(parent_id)
-            if parent:
-                ancestors.insert(0, {
-                    "session_id": parent.session_id,
-                    "agent_name": parent.agent_name,
-                    "status": parent.status,
-                    "parent_session_id": parent.parent_session_id,
-                })
-                current = parent
-            else:
-                ancestors.insert(0, {
-                    "session_id": parent_id,
-                    "agent_name": "?",
-                    "status": "unknown",
-                    "parent_session_id": None,
-                })
-                break
+
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT parent_session_id FROM sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            current_parent = row["parent_session_id"] if row else None
+
+            while current_parent:
+                if current_parent in seen:
+                    break
+                seen.add(current_parent)
+
+                parent_row = conn.execute(
+                    """SELECT session_id, agent_name, status, parent_session_id
+                       FROM sessions WHERE session_id = ?""",
+                    (current_parent,),
+                ).fetchone()
+
+                if parent_row:
+                    ancestors.insert(0, {
+                        "session_id": parent_row["session_id"],
+                        "agent_name": parent_row["agent_name"],
+                        "status": parent_row["status"],
+                        "parent_session_id": parent_row["parent_session_id"],
+                    })
+                    current_parent = parent_row["parent_session_id"]
+                else:
+                    ancestors.insert(0, {
+                        "session_id": current_parent,
+                        "agent_name": "?",
+                        "status": "unknown",
+                        "parent_session_id": None,
+                    })
+                    break
+
         return ancestors
 
     def find_sessions_by_prefix(self, session_id_prefix: str) -> list[dict]:
