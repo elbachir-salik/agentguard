@@ -63,48 +63,24 @@ class Session:
     def call(
         self, fn: Callable, *args: Any, extractor: BaseExtractor | None = None, **kwargs: Any
     ) -> Any:
-        with self._lock:
-            event = self._breaker.evaluate(self._state)
-            if event:
-                self._trip(event)
-                raise CircuitBreakerTripped(event)
-
-            input_data = self._input_data_from_kwargs(args, kwargs)
+        input_data = self._pre_check(args, kwargs)
 
         start = time.perf_counter()
         try:
             response = fn(*args, **kwargs)
         except Exception as e:
-            latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                turn = self._recorder.record_error(input_data, e, latency_ms)
-                self._state.add_turn(turn)
+            self._record_error(input_data, e, time.perf_counter() - start)
             raise
 
         latency_ms = (time.perf_counter() - start) * 1000
-        with self._lock:
-            ext = extractor or self._detect_extractor(response)
-            turn = self._recorder.record_turn(input_data, response, ext, latency_ms)
-            self._state.add_turn(turn)
-
-            if self._on_turn:
-                self._on_turn(turn, self._record)
-
-            self._check_warnings()
-            self._check_post_trip()
-
+        ext = extractor or self._detect_extractor(response)
+        self._record_success(input_data, response, ext, latency_ms)
         return response
 
     async def acall(
         self, fn: Callable, *args: Any, extractor: BaseExtractor | None = None, **kwargs: Any
     ) -> Any:
-        with self._lock:
-            event = self._breaker.evaluate(self._state)
-            if event:
-                self._trip(event)
-                raise CircuitBreakerTripped(event)
-
-            input_data = self._input_data_from_kwargs(args, kwargs)
+        input_data = self._pre_check(args, kwargs)
 
         start = time.perf_counter()
         try:
@@ -114,33 +90,16 @@ class Session:
             else:
                 response = result
         except Exception as e:
-            latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                turn = self._recorder.record_error(input_data, e, latency_ms)
-                self._state.add_turn(turn)
+            self._record_error(input_data, e, time.perf_counter() - start)
             raise
 
         latency_ms = (time.perf_counter() - start) * 1000
-        with self._lock:
-            ext = extractor or self._detect_extractor(response)
-            turn = self._recorder.record_turn(input_data, response, ext, latency_ms)
-            self._state.add_turn(turn)
-
-            if self._on_turn:
-                self._on_turn(turn, self._record)
-
-            self._check_warnings()
-            self._check_post_trip()
+        ext = extractor or self._detect_extractor(response)
+        self._record_success(input_data, response, ext, latency_ms)
         return response
 
     def stream(self, fn: Callable, *args: Any, **kwargs: Any) -> GuardedStream:
-        with self._lock:
-            event = self._breaker.evaluate(self._state)
-            if event:
-                self._trip(event)
-                raise CircuitBreakerTripped(event)
-
-            input_data = self._input_data_from_kwargs(args, kwargs)
+        input_data = self._pre_check(args, kwargs)
 
         start = time.perf_counter()
         accumulator = OpenAIStreamAccumulator()
@@ -148,10 +107,7 @@ class Session:
         try:
             raw_stream = fn(*args, **kwargs)
         except Exception as e:
-            latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                turn = self._recorder.record_error(input_data, e, latency_ms)
-                self._state.add_turn(turn)
+            self._record_error(input_data, e, time.perf_counter() - start)
             raise
 
         if isinstance(raw_stream, (dict, str, bytes)):
@@ -169,22 +125,11 @@ class Session:
 
         def on_complete(_: Any) -> None:
             latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                response = accumulator.as_response()
-                turn = self._recorder.record_turn(
-                    input_data, response, OpenAIExtractor(), latency_ms
-                )
-                self._state.add_turn(turn)
-                if self._on_turn:
-                    self._on_turn(turn, self._record)
-                self._check_warnings()
-                self._check_post_trip()
+            response = accumulator.as_response()
+            self._record_success(input_data, response, OpenAIExtractor(), latency_ms)
 
         def on_error(exc: Exception) -> None:
-            latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                turn = self._recorder.record_error(input_data, exc, latency_ms)
-                self._state.add_turn(turn)
+            self._record_error(input_data, exc, time.perf_counter() - start)
 
         def tracking_stream() -> Iterator[Any]:
             for chunk in stream_iter:
@@ -198,13 +143,7 @@ class Session:
         )
 
     async def astream(self, fn: Callable, *args: Any, **kwargs: Any) -> GuardedAsyncStream:
-        with self._lock:
-            event = self._breaker.evaluate(self._state)
-            if event:
-                self._trip(event)
-                raise CircuitBreakerTripped(event)
-
-            input_data = self._input_data_from_kwargs(args, kwargs)
+        input_data = self._pre_check(args, kwargs)
 
         start = time.perf_counter()
         accumulator = OpenAIStreamAccumulator()
@@ -216,10 +155,7 @@ class Session:
             else:
                 raw_stream = result
         except Exception as e:
-            latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                turn = self._recorder.record_error(input_data, e, latency_ms)
-                self._state.add_turn(turn)
+            self._record_error(input_data, e, time.perf_counter() - start)
             raise
 
         if isinstance(raw_stream, (dict, str, bytes)):
@@ -235,22 +171,11 @@ class Session:
 
         def on_complete(_: Any) -> None:
             latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                response = accumulator.as_response()
-                turn = self._recorder.record_turn(
-                    input_data, response, OpenAIExtractor(), latency_ms
-                )
-                self._state.add_turn(turn)
-                if self._on_turn:
-                    self._on_turn(turn, self._record)
-                self._check_warnings()
-                self._check_post_trip()
+            response = accumulator.as_response()
+            self._record_success(input_data, response, OpenAIExtractor(), latency_ms)
 
         def on_error(exc: Exception) -> None:
-            latency_ms = (time.perf_counter() - start) * 1000
-            with self._lock:
-                turn = self._recorder.record_error(input_data, exc, latency_ms)
-                self._state.add_turn(turn)
+            self._record_error(input_data, exc, time.perf_counter() - start)
 
         async def tracking_stream() -> AsyncIterator[Any]:
             async for chunk in raw_stream:
@@ -262,6 +187,57 @@ class Session:
             on_complete=on_complete,
             on_error=on_error,
         )
+
+    def summary(self) -> dict:
+        total_tokens = sum(t.tokens_in + t.tokens_out for t in self._record.turns)
+        total_cost = sum(t.cost_usd for t in self._record.turns)
+        return {
+            "session_id": self._record.session_id,
+            "agent_name": self._record.agent_name,
+            "turns": len(self._record.turns),
+            "total_tokens": total_tokens,
+            "total_cost_usd": round(total_cost, 6),
+            "status": self._record.status,
+            "metadata": self._record.metadata,
+        }
+
+    @property
+    def record(self) -> SessionRecord:
+        return self._record
+
+    # ------------------------------------------------------------------
+    # Internal helpers (shared by call/acall/stream/astream)
+    # ------------------------------------------------------------------
+
+    def _pre_check(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> list:
+        """Evaluate breaker and extract input data. Raises on trip."""
+        with self._lock:
+            event = self._breaker.evaluate(self._state)
+            if event:
+                self._trip(event)
+                raise CircuitBreakerTripped(event)
+            return self._input_data_from_kwargs(args, kwargs)
+
+    def _record_success(
+        self, input_data: list, response: Any, extractor: BaseExtractor, latency_ms: float
+    ) -> None:
+        """Record a successful turn, fire callbacks, check warnings/trip."""
+        with self._lock:
+            turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
+            self._state.add_turn(turn)
+
+            if self._on_turn:
+                self._on_turn(turn, self._record)
+
+            self._check_warnings()
+            self._check_post_trip()
+
+    def _record_error(self, input_data: list, exc: Exception, elapsed_s: float) -> None:
+        """Record a failed turn (no callbacks, no trip check)."""
+        latency_ms = elapsed_s * 1000
+        with self._lock:
+            turn = self._recorder.record_error(input_data, exc, latency_ms)
+            self._state.add_turn(turn)
 
     def _check_post_trip(self) -> None:
         event = self._breaker.evaluate(self._state)
@@ -279,9 +255,7 @@ class Session:
         if self._warn_cost is not None and cost >= self._warn_cost:
             event = WarnEvent(
                 rule="budget",
-                trigger=(
-                    f"Cost warning: ${cost:.4f} >= ${self._warn_cost:.4f} (warn_cost)"
-                ),
+                trigger=f"Cost warning: ${cost:.4f} >= ${self._warn_cost:.4f} (warn_cost)",
                 turn=len(self._state.turns),
                 details={
                     "kind": "warn_cost",
@@ -324,7 +298,7 @@ class Session:
         if self._on_trip:
             self._on_trip(event, self._record)
 
-    def _detect_extractor(self, response: Any):
+    def _detect_extractor(self, response: Any) -> BaseExtractor:
         module = type(response).__module__ or ""
         if "openai" in module:
             return OpenAIExtractor()
@@ -332,22 +306,5 @@ class Session:
             return AnthropicExtractor()
         return GenericExtractor()
 
-    def summary(self) -> dict:
-        total_tokens = sum(t.tokens_in + t.tokens_out for t in self._record.turns)
-        total_cost = sum(t.cost_usd for t in self._record.turns)
-        return {
-            "session_id": self._record.session_id,
-            "agent_name": self._record.agent_name,
-            "turns": len(self._record.turns),
-            "total_tokens": total_tokens,
-            "total_cost_usd": round(total_cost, 6),
-            "status": self._record.status,
-            "metadata": self._record.metadata,
-        }
-
     def _save(self) -> None:
         self._storage.save_session(self._record)
-
-    @property
-    def record(self) -> SessionRecord:
-        return self._record
