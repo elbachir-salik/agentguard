@@ -56,6 +56,7 @@
                 <tr>
                     <th>Session ID</th>
                     <th>Agent</th>
+                    <th>Parent</th>
                     <th>Status</th>
                     <th>Metadata</th>
                     <th>Tokens</th>
@@ -68,6 +69,11 @@
                 <tr>
                     <td><a href="/session/{{ s.session_id }}">{{ s.session_id }}</a></td>
                     <td>{{ s.agent_name }}</td>
+                    <td>
+                        {% if s.parent_session_id %}
+                        <a href="/session/{{ s.parent_session_id }}">{{ s.parent_session_id[:8] }}…</a>
+                        {% else %}—{% endif %}
+                    </td>
                     <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
                     <td class="metadata-cell">
                         {% for key, value in s.metadata.items() %}

@@ -17,6 +17,35 @@
         <h1>Session: {{ session.session_id }}</h1>
         <h2>{{ session.agent_name }}</h2>
 
+        {% if ancestors or session.parent_session_id or children %}
+        <div class="metadata-box">
+            <h3>Session chain</h3>
+            {% if ancestors %}
+            <p class="chain-breadcrumb">
+                {% for a in ancestors %}
+                <a href="/session/{{ a.session_id }}">{{ a.agent_name }}</a>
+                <span class="chain-sep">→</span>
+                {% endfor %}
+                <strong>{{ session.agent_name }}</strong>
+            </p>
+            {% elif session.parent_session_id %}
+            <p>Parent: <a href="/session/{{ session.parent_session_id }}">{{ session.parent_session_id }}</a></p>
+            {% endif %}
+            {% if children %}
+            <p style="margin-top: 8px; color: var(--text-dim); font-size: 12px;">CHILD SESSIONS</p>
+            <ul class="chain-list">
+                {% for child in children %}
+                <li>
+                    <a href="/session/{{ child.session_id }}">{{ child.agent_name }}</a>
+                    <span class="badge badge-{{ child.status }}">{{ child.status }}</span>
+                    <span class="chain-meta">{{ child.session_id }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="value">{{ session.turns|length }}</div>
