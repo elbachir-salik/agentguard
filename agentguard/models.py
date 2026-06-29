@@ -48,6 +48,7 @@ class WarnEvent:
 class SessionRecord:
     session_id: str = field(default_factory=_new_id)
     agent_name: str = ""
+    parent_session_id: str | None = None
     started_at: str = field(default_factory=_now)
     ended_at: str | None = None
     status: str = "running"  # "completed" | "tripped" | "error"

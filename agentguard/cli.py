@@ -70,14 +70,19 @@ def main():
 @main.command()
 @click.option("--agent", default=None, help="Filter by agent name")
 @click.option("--status", default=None, help="Filter by status (completed/tripped/error)")
+@click.option("--parent", default=None, help="Filter by parent session ID (prefix match)")
 @click.option("--meta", multiple=True, help="Filter by metadata key=value (repeatable)")
 @click.option("--limit", default=20, help="Max sessions to show")
-def sessions(agent, status, meta, limit):
+def sessions(agent, status, parent, meta, limit):
     """List recorded sessions."""
     storage = Storage()
     metadata = _parse_meta_options(meta) if meta else None
     rows = storage.list_sessions(
-        agent_name=agent, status=status, metadata=metadata, limit=limit
+        agent_name=agent,
+        status=status,
+        metadata=metadata,
+        parent_session_id_prefix=parent,
+        limit=limit,
     )
 
     if not rows:
@@ -87,6 +92,7 @@ def sessions(agent, status, meta, limit):
     table = Table(title="Sessions", show_lines=False)
     table.add_column("Session ID", style="cyan", no_wrap=True)
     table.add_column("Agent", style="bold")
+    table.add_column("Parent", style="dim", no_wrap=True)
     table.add_column("Status")
     table.add_column("Metadata", style="dim")
     table.add_column("Tokens", justify="right")
@@ -98,6 +104,7 @@ def sessions(agent, status, meta, limit):
         table.add_row(
             r["session_id"],
             r["agent_name"],
+            r.get("parent_session_id") or "",
             f"[{color}]{r['status']}[/{color}]",
             _format_metadata(r.get("metadata", {})),
             str(r.get("total_tokens", 0) or 0),
@@ -160,6 +167,10 @@ def replay(session_id):
 
     if record.metadata:
         lines.append(f"  Metadata: {_format_metadata(record.metadata)}")
+        lines.append("")
+
+    if record.parent_session_id:
+        lines.append(f"  Parent session: {record.parent_session_id}")
         lines.append("")
 
     color = _status_color(record.status)

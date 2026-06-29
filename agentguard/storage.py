@@ -63,6 +63,11 @@ class Storage:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)")}
         if "metadata_json" not in columns:
             conn.execute("ALTER TABLE sessions ADD COLUMN metadata_json TEXT")
+        if "parent_session_id" not in columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_session_id)"
+        )
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -77,12 +82,14 @@ class Storage:
             conn.execute(
                 """INSERT OR REPLACE INTO sessions
                    (session_id, agent_name, started_at, ended_at, status,
-                    total_tokens, total_cost_usd, breaker_event_json, metadata_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    total_tokens, total_cost_usd, breaker_event_json, metadata_json,
+                    parent_session_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     record.session_id, record.agent_name, record.started_at,
                     record.ended_at, record.status, record.total_tokens,
                     record.total_cost_usd, breaker_json, metadata_json,
+                    record.parent_session_id,
                 ),
             )
 
@@ -146,6 +153,7 @@ class Storage:
             return SessionRecord(
                 session_id=row["session_id"],
                 agent_name=row["agent_name"],
+                parent_session_id=row["parent_session_id"],
                 started_at=row["started_at"],
                 ended_at=row["ended_at"],
                 status=row["status"],
@@ -161,10 +169,12 @@ class Storage:
         agent_name: str | None = None,
         status: str | None = None,
         metadata: dict[str, str] | None = None,
+        parent_session_id: str | None = None,
+        parent_session_id_prefix: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
         query = """SELECT session_id, agent_name, started_at, ended_at, status,
-                          total_tokens, total_cost_usd, metadata_json
+                          total_tokens, total_cost_usd, metadata_json, parent_session_id
                    FROM sessions WHERE 1=1"""
         params: list = []
 
@@ -174,6 +184,12 @@ class Storage:
         if status:
             query += " AND status = ?"
             params.append(status)
+        if parent_session_id is not None:
+            query += " AND parent_session_id = ?"
+            params.append(parent_session_id)
+        if parent_session_id_prefix is not None:
+            query += " AND parent_session_id LIKE ?"
+            params.append(f"{parent_session_id_prefix}%")
         if metadata:
             for key, value in metadata.items():
                 query += " AND json_extract(metadata_json, '$.' || ?) = ?"
@@ -194,6 +210,38 @@ class Storage:
                 del item["metadata_json"]
                 results.append(item)
             return results
+
+    def list_child_sessions(self, parent_session_id: str, limit: int = 50) -> list[dict]:
+        return self.list_sessions(parent_session_id=parent_session_id, limit=limit)
+
+    def get_session_ancestors(self, session_id: str) -> list[dict]:
+        """Return ancestor sessions root-first (each is a list_sessions-style dict)."""
+        ancestors: list[dict] = []
+        seen: set[str] = set()
+        current = self.get_session(session_id)
+        while current and current.parent_session_id:
+            parent_id = current.parent_session_id
+            if parent_id in seen:
+                break
+            seen.add(parent_id)
+            parent = self.get_session(parent_id)
+            if parent:
+                ancestors.insert(0, {
+                    "session_id": parent.session_id,
+                    "agent_name": parent.agent_name,
+                    "status": parent.status,
+                    "parent_session_id": parent.parent_session_id,
+                })
+                current = parent
+            else:
+                ancestors.insert(0, {
+                    "session_id": parent_id,
+                    "agent_name": "?",
+                    "status": "unknown",
+                    "parent_session_id": None,
+                })
+                break
+        return ancestors
 
     def find_sessions_by_prefix(self, session_id_prefix: str) -> list[dict]:
         with self._connect() as conn:
