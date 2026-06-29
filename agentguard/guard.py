@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Callable, Generator
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
@@ -91,7 +91,9 @@ class Guard:
             blocked_tools=blocked_tools,
         )
 
-        effective_max_cost = max_cost if max_cost is not None else self._max_cost_from_rules(self._rules)
+        effective_max_cost = (
+            max_cost if max_cost is not None else self._max_cost_from_rules(self._rules)
+        )
         if warn_pct is not None and effective_max_cost is None:
             raise ValueError("warn_pct requires max_cost to be set (directly or via BudgetRule).")
         self._max_cost = effective_max_cost

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, AsyncGenerator, Generator
+from typing import Any
 
 from agentguard.extractors import OpenAIExtractor
 from agentguard.guard import Guard

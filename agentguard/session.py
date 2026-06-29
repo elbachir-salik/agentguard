@@ -3,8 +3,8 @@ from __future__ import annotations
 import inspect
 import threading
 import time
-from collections.abc import AsyncIterator, Iterator
-from typing import Any, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
+from typing import Any
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped

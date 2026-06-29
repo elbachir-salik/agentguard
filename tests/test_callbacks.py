@@ -1,4 +1,4 @@
-from agentguard import Guard, CircuitBreakerTripped
+from agentguard import CircuitBreakerTripped, Guard
 from agentguard.models import BreakerEvent, SessionRecord, Turn
 
 

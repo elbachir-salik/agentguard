@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from agentguard import Guard, CircuitBreakerTripped
+from agentguard import CircuitBreakerTripped, Guard
 from agentguard.integrations.openai import (
     GuardedOpenAIClient,
     guard_openai,

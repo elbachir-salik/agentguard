@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agentguard import Guard, CircuitBreakerTripped
+from agentguard import CircuitBreakerTripped, Guard
 from agentguard.models import WarnEvent
 from agentguard.rules.budget import BudgetRule
 

@@ -101,7 +101,7 @@ docker run -p 8585:8585 -v agentguard-data:/data agentguard
 
 ## Why AgentGuard?
 
-Agents in production fail silently — they loop, burn tokens, and go off-scope. Enterprise observability tools need cloud accounts and API keys. AgentGuard is self-hosted recording + protection + dashboard in one install.
+Agents in production fail silently, they loop, burn tokens, and go off-scope. Enterprise observability tools need cloud accounts and API keys. AgentGuard is self-hosted recording + protection + dashboard in one install.
 
 ---
 

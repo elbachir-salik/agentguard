@@ -7,7 +7,6 @@ from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 from agentguard import Guard
-from agentguard.exceptions import CircuitBreakerTripped
 from agentguard.integrations.fastapi import (
     create_session_dependency,
     metadata_from_request,

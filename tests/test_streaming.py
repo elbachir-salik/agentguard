@@ -1,6 +1,6 @@
 import pytest
 
-from agentguard import Guard, CircuitBreakerTripped
+from agentguard import CircuitBreakerTripped, Guard
 from agentguard.streaming import OpenAIStreamAccumulator
 
 
@@ -21,7 +21,10 @@ class _MockStreamChunk:
     def __init__(self, content: str | None = None, model: str | None = None, usage=None):
         self.model = model
         self.usage = usage
-        self.choices = [_MockStreamChoice(_MockDelta(content=content))] if content is not None else []
+        if content is not None:
+            self.choices = [_MockStreamChoice(_MockDelta(content=content))]
+        else:
+            self.choices = []
 
 
 class _MockUsage:

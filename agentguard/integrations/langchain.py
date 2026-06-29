@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from agentguard.extractors import GenericExtractor
@@ -13,7 +14,6 @@ from agentguard.guard import Guard
 from agentguard.session import Session
 
 if TYPE_CHECKING:
-    from langchain_core.callbacks import BaseCallbackHandler
     from langchain_core.outputs import LLMResult
 
 try:
@@ -89,10 +89,14 @@ def _llm_result_to_response(output: LLMResult, model_name: str | None) -> dict:
             elif hasattr(gen, "text"):
                 content = gen.text or content
 
+    prompt = token_usage.get("prompt_tokens", 0) or token_usage.get("input_tokens", 0)
+    completion = (
+        token_usage.get("completion_tokens", 0) or token_usage.get("output_tokens", 0)
+    )
     return {
         "usage": {
-            "prompt_tokens": token_usage.get("prompt_tokens", 0) or token_usage.get("input_tokens", 0),
-            "completion_tokens": token_usage.get("completion_tokens", 0) or token_usage.get("output_tokens", 0),
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
         },
         "content": content,
         "tool_calls": tool_calls,

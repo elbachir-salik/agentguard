@@ -159,10 +159,10 @@ def replay(session_id):
 
     if record.breaker_event:
         be = record.breaker_event
-        lines.append(f"  [red bold]== CIRCUIT BREAKER =========================[/red bold]")
+        lines.append("  [red bold]== CIRCUIT BREAKER =========================[/red bold]")
         lines.append(f"  [red]  Rule:    {be.rule}[/red]")
         lines.append(f"  [red]  Cause:   {be.trigger}[/red]")
-        lines.append(f"  [red bold]============================================[/red bold]")
+        lines.append("  [red bold]============================================[/red bold]")
         lines.append("")
 
     if record.metadata:
@@ -241,11 +241,16 @@ def dashboard(host, port):
     """Launch the local web dashboard."""
     try:
         import uvicorn
+
         from agentguard.dashboard.app import app  # noqa: F811
+
         console.print(f"[bold green]Starting dashboard at http://{host}:{port}[/bold green]")
         uvicorn.run(app, host=host, port=port, log_level="info")
     except ImportError:
-        console.print("[red]Dashboard dependencies missing. Install with: pip install agentguard[dashboard][/red]")
+        console.print(
+            "[red]Dashboard dependencies missing. "
+            "Install with: pip install agentguard[dashboard][/red]"
+        )
 
 
 if __name__ == "__main__":
