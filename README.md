@@ -67,15 +67,16 @@ Real-time protection with composable rules:
 
 When a rule trips, AgentGuard raises `CircuitBreakerTripped` and saves the session with full context.
 
-
+Budget and turn limits allow the current LLM call to finish before tripping — the trip fires on the post-call check. Streaming responses are not supported.
 
 ### 3. CLI
 
 ```bash
-agentguard sessions              # list all recorded sessions
-agentguard replay <session_id>   # replay a session turn by turn
-agentguard stats                 # cost and usage summary
-agentguard dashboard             # local web UI at localhost:8585
+agentguard sessions                        # list all recorded sessions
+agentguard sessions --meta env=staging     # filter by metadata
+agentguard replay <session_id>             # replay a session turn by turn
+agentguard stats                           # cost and usage summary
+agentguard dashboard                       # local web UI at localhost:8585
 ```
 
 ### 4. Local Dashboard
@@ -141,6 +142,49 @@ class NoPIIRule(BaseRule):
 
 guard = Guard(agent_name="safe-bot", rules=[NoPIIRule()])
 ```
+
+### Session Metadata
+
+Attach labels to sessions for filtering and debugging:
+
+```python
+with guard.session(metadata={"customer_id": "4521", "env": "staging", "ticket": "1234"}) as session:
+    response = session.call(client.chat.completions.create, ...)
+```
+
+Filter in CLI:
+
+```bash
+agentguard sessions --meta env=staging --meta customer_id=4521
+```
+
+### Callbacks
+
+Register hooks that fire on every turn or when the circuit breaker trips. Use them for logging, Slack alerts, metrics, or custom recovery logic:
+
+```python
+import logging
+from agentguard import Guard
+from agentguard.models import BreakerEvent, SessionRecord, Turn
+
+logger = logging.getLogger(__name__)
+
+def on_turn(turn: Turn, record: SessionRecord) -> None:
+    logger.info("Turn %s | $%.4f | session=%s", turn.turn_number, turn.cost_usd, record.session_id)
+
+def on_trip(event: BreakerEvent, record: SessionRecord) -> None:
+    logger.warning("Tripped [%s]: %s (session %s)", event.rule, event.trigger, record.session_id)
+    # send_slack_alert(event, record)  # your integration here
+
+guard = Guard(
+    agent_name="support-bot",
+    max_cost=5.00,
+    on_turn=on_turn,
+    on_trip=on_trip,
+)
+```
+
+See [`examples/callbacks.py`](examples/callbacks.py) for a full example with logging and an optional Slack webhook (`SLACK_WEBHOOK_URL` env var).
 
 ---
 
