@@ -36,6 +36,32 @@ def test_metadata_in_list_sessions(tmp_db):
     assert sessions[0]["metadata"] == {"env": "production"}
 
 
+def test_metadata_filter(tmp_db):
+    storage = Storage(tmp_db)
+    staging = SessionRecord(
+        session_id="meta-staging",
+        agent_name="support-bot",
+        metadata={"env": "staging", "customer_id": "1"},
+    )
+    staging.finalize("completed")
+    production = SessionRecord(
+        session_id="meta-prod",
+        agent_name="support-bot",
+        metadata={"env": "production", "customer_id": "2"},
+    )
+    production.finalize("completed")
+    storage.save_session(staging)
+    storage.save_session(production)
+
+    filtered = storage.list_sessions(metadata={"env": "staging"})
+    assert len(filtered) == 1
+    assert filtered[0]["session_id"] == "meta-staging"
+
+    filtered_customer = storage.list_sessions(metadata={"customer_id": "2"})
+    assert len(filtered_customer) == 1
+    assert filtered_customer[0]["session_id"] == "meta-prod"
+
+
 class _MockUsage:
     prompt_tokens = 10
     completion_tokens = 5
