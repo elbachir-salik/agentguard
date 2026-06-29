@@ -1,5 +1,9 @@
 # AgentGuard
 
+[![CI](https://github.com/salikelbachir/agentguard/actions/workflows/ci.yml/badge.svg)](https://github.com/salikelbachir/agentguard/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://salikelbachir.github.io/agentguard/)
+
 **The black box + circuit breaker for AI agents.**
 
 Wrap any LLM call in 3 lines. Record every turn. Catch loops, budget overruns, and timeouts before they cause damage. Replay any session. Browse it all in a local dashboard. No cloud. No API keys. Just `pip install agentguard`.
