@@ -54,6 +54,38 @@ For LangChain integration:
 pip install agentguard[langchain]
 ```
 
+For the OpenAI Python SDK wrapper:
+
+```bash
+pip install agentguard[openai]
+```
+
+---
+
+## OpenAI Python SDK
+
+Wrap your existing `OpenAI` client — `chat.completions.create` is guarded automatically:
+
+```python
+from openai import OpenAI
+from agentguard import Guard
+from agentguard.integrations.openai import guard_openai
+
+guard = Guard(agent_name="my-agent", max_cost=1.00, max_turns=15)
+client = OpenAI()
+
+with guard_openai(guard, client) as (session, guarded):
+    response = guarded.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "Hello!"}],
+    )
+    print(session.summary())
+```
+
+Works with sync and async clients (`AsyncOpenAI`), including streaming (`stream=True`).
+
+See [`examples/openai_guarded.py`](examples/openai_guarded.py) for a no-API-key mock demo.
+
 ---
 
 ## Docker

@@ -38,6 +38,9 @@ dashboard = [
 langchain = [
     "langchain-core>=0.2",
 ]
+openai = [
+    "openai>=1.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio",
@@ -46,6 +49,7 @@ dev = [
     "uvicorn>=0.20",
     "jinja2>=3.0",
     "langchain-core>=0.2",
+    "openai>=1.0",
 ]
 
 [project.scripts]
