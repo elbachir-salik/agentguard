@@ -67,7 +67,28 @@ Real-time protection with composable rules:
 
 When a rule trips, AgentGuard raises `CircuitBreakerTripped` and saves the session with full context.
 
-Budget and turn limits allow the current LLM call to finish before tripping — the trip fires on the post-call check. Streaming responses are not supported.
+Budget and turn limits allow the current LLM call to finish before tripping — the trip fires on the post-call check.
+
+### Streaming (OpenAI-compatible)
+
+Wrap streaming completions with `session.stream()`. Chunks pass through transparently; the turn is recorded after the stream finishes:
+
+```python
+with guard.session() as session:
+    stream = session.stream(
+        client.chat.completions.create,
+        model="gpt-4o",
+        messages=messages,
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            print(delta, end="")
+```
+
+Use `stream_options={"include_usage": True}` so token counts are captured on the final chunk.
 
 ### 3. CLI
 
