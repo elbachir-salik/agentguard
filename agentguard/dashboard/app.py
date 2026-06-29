@@ -18,8 +18,20 @@ storage = Storage()
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, agent: str | None = None, status: str | None = None):
-    sessions = storage.list_sessions(agent_name=agent, status=status, limit=100)
+async def index(
+    request: Request,
+    agent: str | None = None,
+    status: str | None = None,
+    meta_key: str | None = None,
+    meta_value: str | None = None,
+):
+    metadata = None
+    if meta_key and meta_value:
+        metadata = {meta_key: meta_value}
+
+    sessions = storage.list_sessions(
+        agent_name=agent, status=status, metadata=metadata, limit=100
+    )
     stats = storage.get_stats(agent_name=agent)
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -27,6 +39,8 @@ async def index(request: Request, agent: str | None = None, status: str | None =
         "stats": stats,
         "filter_agent": agent or "",
         "filter_status": status or "",
+        "filter_meta_key": meta_key or "",
+        "filter_meta_value": meta_value or "",
     })
 
 

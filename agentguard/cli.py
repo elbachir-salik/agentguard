@@ -23,6 +23,25 @@ def _status_color(status: str) -> str:
     return {"completed": "green", "tripped": "red", "error": "yellow"}.get(status, "white")
 
 
+def _parse_meta_options(meta: tuple[str, ...]) -> dict[str, str]:
+    filters: dict[str, str] = {}
+    for item in meta:
+        if "=" not in item:
+            raise click.BadParameter(f"Expected key=value, got: {item}")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise click.BadParameter(f"Metadata key cannot be empty: {item}")
+        filters[key] = value.strip()
+    return filters
+
+
+def _format_metadata(metadata: dict) -> str:
+    if not metadata:
+        return ""
+    return ", ".join(f"{k}={v}" for k, v in metadata.items())
+
+
 @click.group()
 def main():
     """AgentGuard -- The black box + circuit breaker for AI agents."""
@@ -32,11 +51,15 @@ def main():
 @main.command()
 @click.option("--agent", default=None, help="Filter by agent name")
 @click.option("--status", default=None, help="Filter by status (completed/tripped/error)")
+@click.option("--meta", multiple=True, help="Filter by metadata key=value (repeatable)")
 @click.option("--limit", default=20, help="Max sessions to show")
-def sessions(agent, status, limit):
+def sessions(agent, status, meta, limit):
     """List recorded sessions."""
     storage = Storage()
-    rows = storage.list_sessions(agent_name=agent, status=status, limit=limit)
+    metadata = _parse_meta_options(meta) if meta else None
+    rows = storage.list_sessions(
+        agent_name=agent, status=status, metadata=metadata, limit=limit
+    )
 
     if not rows:
         console.print("[dim]No sessions found.[/dim]")
@@ -46,6 +69,7 @@ def sessions(agent, status, limit):
     table.add_column("Session ID", style="cyan", no_wrap=True)
     table.add_column("Agent", style="bold")
     table.add_column("Status")
+    table.add_column("Metadata", style="dim")
     table.add_column("Tokens", justify="right")
     table.add_column("Cost", justify="right")
     table.add_column("Started", style="dim")
@@ -56,6 +80,7 @@ def sessions(agent, status, limit):
             r["session_id"],
             r["agent_name"],
             f"[{color}]{r['status']}[/{color}]",
+            _format_metadata(r.get("metadata", {})),
             str(r.get("total_tokens", 0) or 0),
             f"${r.get('total_cost_usd', 0) or 0:.4f}",
             r["started_at"][:19],
@@ -123,6 +148,10 @@ def replay(session_id):
         lines.append(f"  [red]  Rule:    {be.rule}[/red]")
         lines.append(f"  [red]  Cause:   {be.trigger}[/red]")
         lines.append(f"  [red bold]============================================[/red bold]")
+        lines.append("")
+
+    if record.metadata:
+        lines.append(f"  Metadata: {_format_metadata(record.metadata)}")
         lines.append("")
 
     color = _status_color(record.status)

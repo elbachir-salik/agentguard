@@ -160,6 +160,7 @@ class Storage:
         self,
         agent_name: str | None = None,
         status: str | None = None,
+        metadata: dict[str, str] | None = None,
         limit: int = 50,
     ) -> list[dict]:
         query = """SELECT session_id, agent_name, started_at, ended_at, status,
@@ -173,6 +174,10 @@ class Storage:
         if status:
             query += " AND status = ?"
             params.append(status)
+        if metadata:
+            for key, value in metadata.items():
+                query += " AND json_extract(metadata_json, '$.' || ?) = ?"
+                params.extend([key, value])
 
         query += " ORDER BY started_at DESC LIMIT ?"
         params.append(limit)
