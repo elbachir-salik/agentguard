@@ -8,7 +8,12 @@ from typing import Any, Callable
 
 from agentguard.breaker import CircuitBreaker
 from agentguard.exceptions import CircuitBreakerTripped
-from agentguard.extractors import AnthropicExtractor, GenericExtractor, OpenAIExtractor
+from agentguard.extractors import (
+    AnthropicExtractor,
+    BaseExtractor,
+    GenericExtractor,
+    OpenAIExtractor,
+)
 from agentguard.models import BreakerEvent, SessionRecord, Turn, WarnEvent
 from agentguard.recorder import Recorder
 from agentguard.rules.base import SessionState
@@ -55,7 +60,9 @@ class Session:
         self._warned = False
         self._lock = threading.Lock()
 
-    def call(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+    def call(
+        self, fn: Callable, *args: Any, extractor: BaseExtractor | None = None, **kwargs: Any
+    ) -> Any:
         with self._lock:
             event = self._breaker.evaluate(self._state)
             if event:
@@ -76,8 +83,8 @@ class Session:
 
         latency_ms = (time.perf_counter() - start) * 1000
         with self._lock:
-            extractor = self._detect_extractor(response)
-            turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
+            ext = extractor or self._detect_extractor(response)
+            turn = self._recorder.record_turn(input_data, response, ext, latency_ms)
             self._state.add_turn(turn)
 
             if self._on_turn:
@@ -88,7 +95,9 @@ class Session:
 
         return response
 
-    async def acall(self, fn: Callable, *args: Any, **kwargs: Any) -> Any:
+    async def acall(
+        self, fn: Callable, *args: Any, extractor: BaseExtractor | None = None, **kwargs: Any
+    ) -> Any:
         with self._lock:
             event = self._breaker.evaluate(self._state)
             if event:
@@ -113,8 +122,8 @@ class Session:
 
         latency_ms = (time.perf_counter() - start) * 1000
         with self._lock:
-            extractor = self._detect_extractor(response)
-            turn = self._recorder.record_turn(input_data, response, extractor, latency_ms)
+            ext = extractor or self._detect_extractor(response)
+            turn = self._recorder.record_turn(input_data, response, ext, latency_ms)
             self._state.add_turn(turn)
 
             if self._on_turn:
