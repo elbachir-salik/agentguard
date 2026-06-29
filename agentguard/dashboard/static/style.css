@@ -181,6 +181,35 @@ tr:hover td { background: rgba(88, 166, 255, 0.04); }
 
 .breaker-box h3 { color: var(--red); margin-bottom: 8px; }
 
+.metadata-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+}
+
+.metadata-box h3 {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+}
+
+.metadata-tag {
+    display: inline-block;
+    background: rgba(88, 166, 255, 0.12);
+    border: 1px solid var(--border);
+    color: var(--blue);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin: 2px 4px 2px 0;
+}
+
+.metadata-cell {
+    font-size: 12px;
+}
+
 .tool-call {
     background: rgba(57, 210, 192, 0.08);
     border-left: 3px solid var(--cyan);

@@ -38,6 +38,15 @@
             </div>
         </div>
 
+        {% if session.metadata %}
+        <div class="metadata-box">
+            <h3>Metadata</h3>
+            {% for key, value in session.metadata.items() %}
+            <span class="metadata-tag">{{ key }}={{ value }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {% if session.breaker_event %}
         <div class="breaker-box">
             <h3>CIRCUIT BREAKER TRIPPED</h3>

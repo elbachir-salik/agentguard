@@ -43,8 +43,10 @@
                 <option value="tripped" {% if filter_status == 'tripped' %}selected{% endif %}>tripped</option>
                 <option value="error" {% if filter_status == 'error' %}selected{% endif %}>error</option>
             </select>
+            <input type="text" name="meta_key" placeholder="Metadata key" value="{{ filter_meta_key }}">
+            <input type="text" name="meta_value" placeholder="Metadata value" value="{{ filter_meta_value }}">
             <button type="submit">Filter</button>
-            {% if filter_agent or filter_status %}
+            {% if filter_agent or filter_status or filter_meta_key or filter_meta_value %}
             <a href="/">Clear</a>
             {% endif %}
         </form>
@@ -55,6 +57,7 @@
                     <th>Session ID</th>
                     <th>Agent</th>
                     <th>Status</th>
+                    <th>Metadata</th>
                     <th>Tokens</th>
                     <th>Cost</th>
                     <th>Started</th>
@@ -66,6 +69,11 @@
                     <td><a href="/session/{{ s.session_id }}">{{ s.session_id }}</a></td>
                     <td>{{ s.agent_name }}</td>
                     <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
+                    <td class="metadata-cell">
+                        {% for key, value in s.metadata.items() %}
+                        <span class="metadata-tag">{{ key }}={{ value }}</span>
+                        {% endfor %}
+                    </td>
                     <td>{{ s.total_tokens or 0 }}</td>
                     <td>${{ "%.4f"|format(s.total_cost_usd or 0) }}</td>
                     <td>{{ s.started_at[:19] }}</td>
